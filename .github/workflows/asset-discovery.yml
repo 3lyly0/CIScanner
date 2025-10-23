@@ -8,7 +8,7 @@ on:
         required: true
         default: 'example.com'
   schedule:
-    # Runs every Sunday at 7 AM UTC (a day after the vulnerability scan)
+    # Runs every Sunday at 7 AM UTC
     - cron: '0 7 * * 0'
 
 jobs:
@@ -22,19 +22,18 @@ jobs:
         run: |
           # Update package list and install system-level dependencies
           sudo apt-get update
-          sudo apt-get install -y chromium-browser jq libpcap-dev unzip curl
+          # ✅ SOLUTION FOR CORE DUMP: Added all necessary libraries for the headless browser
+          sudo apt-get install -y chromium-browser jq libpcap-dev unzip curl \
+            libnss3 libatk-bridge2.0-0 libdrm2 libxkbcommon0 libxcomposite1 \
+            libxdamage1 libxrandr2 libgbm1 libxss1 libasound2 fonts-liberation
           
-      - name: Install ProjectDiscovery Tools (User Path)
+      - name: Install ProjectDiscovery Tools
         run: |
           echo "Installing pdtm..."
           curl -sL "https://github.com/projectdiscovery/pdtm/releases/download/v0.1.3/pdtm_0.1.3_linux_amd64.zip" -o pdtm.zip
           unzip -o pdtm.zip
           chmod +x pdtm
           sudo mv pdtm /usr/local/bin/
-
-          # 🔧 Force PDTM to use runner's home, not /root
-          export PDTM_DIR="$HOME/.pdtm"
-          mkdir -p "$PDTM_DIR"
 
           echo "Installing ProjectDiscovery tools..."
           pdtm -install subfinder
@@ -45,30 +44,22 @@ jobs:
           echo "$HOME/.pdtm/go/bin" >> $GITHUB_PATH
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
-          echo "Installed tools:"
-          ls -la "$HOME/.pdtm/go/bin"
-
-
-          
-      - name: Install Other Tools (Simple Go Install & Direct Download)
+      - name: Install Other Tools
         run: |
           # Install Go for tools that need it
           sudo apt-get install -y golang-go
           
           # Install waybackurls
-          echo "Installing waybackurls from tomnomnom..."
+          echo "Installing waybackurls..."
           go install github.com/tomnomnom/waybackurls@latest
           
-          # Install gowitness (fixed - direct binary)
-          echo "Installing aquatone (direct binary)..."
-          sudo apt-get install -y chromium-browser unzip
+          # Install aquatone
+          echo "Installing aquatone..."
           curl -L -o aquatone.zip https://github.com/michenriksen/aquatone/releases/download/v1.7.0/aquatone_linux_amd64_1.7.0.zip
           unzip -o aquatone.zip
           chmod +x aquatone
-          mv aquatone /usr/local/bin/aquatone
+          sudo mv aquatone /usr/local/bin/aquatone
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
-
-
 
       - name: Set Domain
         id: set_domain
@@ -79,51 +70,9 @@ jobs:
             echo "DOMAIN=example.com" >> $GITHUB_ENV
           fi
 
-      - name: Create Notification Script
-        run: |
-          cat << 'EOF' > notify.sh
-          #!/bin/bash
-          set -e
-          WEBHOOK_URL="$1"
-          DOMAIN="$2"
-
-          send_embed() {
-              local title="$1"
-              local description="$2"
-              local color="$3"
-              local payload
-              payload=$(jq -n \
-                  --arg title "$title" \
-                  --arg description "$description" \
-                  --argjson color "$color" \
-                  --arg footer "Recon completed at $(date -u '+%Y-%m-%d %H:%M:%S UTC')" \
-                  '{
-                      "embeds": [{
-                          "title": $title,
-                          "description": $description,
-                          "color": $color,
-                          "footer": {"text": $footer}
-                      }]
-                  }')
-              curl -s -H "Content-Type: application/json" -X POST -d "$payload" "$WEBHOOK_URL"
-          }
-
-          case "$3" in
-            "start")
-              send_embed "🗺️ Deep Recon Started" "**Target:** $DOMAIN\n**Tools:** Subfinder, Naabu, Httpx, Gowitness, Waybackurls" "3447003"
-              ;;
-            "summary")
-              printf -v desc '**Target:** %s\n\n**📊 Discovery Summary:**\n- **Subdomains Found:** %s\n- **Open Ports Found:** %s\n- **Live Web Services:** %s\n- **Screenshots Taken:** %s\n- **Wayback URLs Gathered:** %s\n\n📦 Detailed reports and screenshots are available in the [GitHub Actions artifacts](%s).' \
-                "$DOMAIN" "$4" "$5" "$6" "$7" "$8" "$9"
-              send_embed "📋 Recon Report for $DOMAIN" "$desc" "10181038"
-              ;;
-          esac
-          EOF
-          chmod +x notify.sh
-
       - name: Notify Start
         run: |
-          ./notify.sh "${{ secrets.DISCORD_WEBHOOK }}" "${{ env.DOMAIN }}" "start"
+          curl -s -H "Content-Type: application/json" -X POST -d "{\"content\": \"🗺️ **Deep Recon Started for \`${{ env.DOMAIN }}\`**\"}" "${{ secrets.DISCORD_WEBHOOK }}"
 
       - name: 1️⃣ Subdomain Enumeration
         run: |
@@ -147,9 +96,9 @@ jobs:
         run: |
           echo "📸 Taking screenshots of live web services..."
           mkdir -p screenshots
-          # gowitness needs a list of full URLs
-          cat live-services.txt | awk '{print $1}' | aquatone -out ./screenshots
-          echo "SCREENSHOTS_COUNT=$(ls -1q screenshots | wc -l)" >> $GITHUB_ENV
+          # aquatone needs a list of full URLs. Reduced threads for stability.
+          cat live-services.txt | awk '{print $1}' | aquatone -out ./screenshots -threads 2
+          echo "SCREENSHOTS_COUNT=$(find screenshots -name '*.png' | wc -l)" >> $GITHUB_ENV
 
       - name: 5️⃣ Wayback URL Gathering
         run: |
@@ -157,37 +106,131 @@ jobs:
           waybackurls ${{ env.DOMAIN }} | sort -u > wayback-urls.txt
           echo "WAYBACK_COUNT=$(wc -l < wayback-urls.txt)" >> $GITHUB_ENV
 
-      - name: Notify Final Summary
-        env:
-          GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          ./notify.sh "${{ secrets.DISCORD_WEBHOOK }}" "${{ env.DOMAIN }}" "summary" \
-            "${{ env.SUBDOMAINS_COUNT }}" \
-            "${{ env.PORTS_COUNT }}" \
-            "${{ env.LIVE_SERVICES_COUNT }}" \
-            "${{ env.SCREENSHOTS_COUNT }}" \
-            "${{ env.WAYBACK_COUNT }}" \
-            "${{ env.GITHUB_RUN_URL }}"
-
-      - name: Upload Recon Report as Artifact
+      - name: 📦 Upload All Findings as Single Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: recon-report-${{ env.DOMAIN }}-${{ github.run_number }}
+          name: full-recon-report-${{ env.DOMAIN }}-${{ github.run_number }}
           path: |
             subdomains.txt
             ports.txt
             live-services.txt
             wayback-urls.txt
+            screenshots/
           retention-days: 30
 
-      - name: Upload Screenshots as Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: screenshots-${{ env.DOMAIN }}-${{ github.run_number }}
-          path: screenshots/
-          retention-days: 30
+      - name: 📤 Send Everything (Screenshots + Report) to Discord
+        env:
+          # Configure how many screenshots to send directly
+          MAX_IMAGES_TO_SEND: 10 
+          # Construct the direct URL to the artifacts section of the run
+          ARTIFACT_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts
+        run: |
+          # Create the ultimate notification script
+          cat << 'EOF' > ultimate_notify.sh
+          #!/bin/bash
+          set -e
+
+          WEBHOOK_URL="$1"
+          DOMAIN="$2"
+          ARTIFACT_LINK="$3"
+          SCREENSHOTS_DIR="$4"
+          MAX_IMAGES="$5"
+          SUBDOMAINS_FILE="subdomains.txt"
+          LIVE_SERVICES_FILE="live-services.txt"
+
+          # --- Helper function to send with retries ---
+          send_with_retry() {
+            local payload="$1"
+            local retries=3
+            local wait_time=5
+            for ((i=1; i<=retries; i++)); do
+              echo "Attempt $i to send notification..."
+              if curl -s -H "Content-Type: application/json" -X POST -d "$payload" "$WEBHOOK_URL"; then
+                echo "Notification sent successfully."
+                return 0
+              else
+                echo "Failed to send notification. Retrying in ${wait_time}s..."
+                sleep $wait_time
+              fi
+            done
+            echo "Failed to send notification after $retries attempts."
+            return 1
+          }
+
+          # --- 1. Send the Main Report Embed ---
+          echo "📤 Sending main report embed..."
+          SUBDOMAINS_PREVIEW=$(head -n 10 "$SUBDOMAINS_FILE" | sed 's/^/- /' | tr '\n' '; ' | sed 's/; $//')
+          LIVE_SERVICES_PREVIEW=$(head -n 10 "$LIVE_SERVICES_FILE" | awk '{print $1 " [" $3 "]"}' | sed 's/^/- /' | tr '\n' '; ' | sed 's/; $//')
+
+          PAYLOAD=$(jq -n \
+            --arg title "🔍 Recon Report for $DOMAIN" \
+            --arg subdomains "Found **$6** subdomains. Preview:\n$SUBDOMAINS_PREVIEW" \
+            --arg services "Found **$7** live services. Preview:\n$LIVE_SERVICES_PREVIEW" \
+            --arg wayback "Gathered **$8** URLs from Wayback Machine." \
+            --arg screenshots "Took **$9** screenshots." \
+            --arg artifact "📦 **Download Full Report & All Files**" \
+            --arg artifact_url "$ARTIFACT_LINK" \
+            --arg footer "Recon completed at $(date -u '+%Y-%m-%d %H:%M:%S UTC')" \
+            '{
+              "embeds": [
+                {
+                  "title": $title,
+                  "color": 5814783,
+                  "fields": [
+                    {"name": "🌐 Subdomains", "value": $subdomains, "inline": false},
+                    {"name": "🚀 Live Services", "value": $services, "inline": false},
+                    {"name": "🕰️ Wayback URLs", "value": $wayback, "inline": true},
+                    {"name": "📸 Screenshots", "value": $screenshots, "inline": true},
+                    {"name": $artifact, "value": "[Click here to download everything](" + $artifact_url + ")", "inline": false}
+                  ],
+                  "footer": {"text": $footer}
+                }
+              ]
+            }'
+          )
+          send_with_retry "$PAYLOAD"
+
+          # --- 2. Send Screenshots as Files ---
+          echo "📸 Sending screenshots..."
+          IMAGE_COUNT=0
+          TOTAL_IMAGES=$(find "$SCREENSHOTS_DIR" -name '*.png' | wc -l)
+
+          find "$SCREENSHOTS_DIR" -name '*.png' | while read -r img; do
+            if (( IMAGE_COUNT >= MAX_IMAGES )); then
+              break
+            fi
+            
+            echo "Uploading $(basename "$img")..."
+            curl -s -F "file1=@$img" -F "payload_json={\"content\": \"📸 Screenshot for: $(basename "$img" .png)\"}" "$WEBHOOK_URL"
+            
+            ((IMAGE_COUNT++))
+            sleep 1 # Small delay to avoid rate limits
+          done
+
+          # --- 3. Send a follow-up if there are more images ---
+          if (( TOTAL_IMAGES > MAX_IMAGES )); then
+            MORE_COUNT=$((TOTAL_IMAGES - MAX_IMAGES))
+            echo "📤 Sending follow-up message for remaining screenshots..."
+            FOLLOWUP_PAYLOAD=$(jq -n \
+              --arg msg "There are **$MORE_COUNT** more screenshots. Download the full artifact to see them all!" \
+              --arg url "$ARTIFACT_LINK" \
+              '{"content": $msg + "\n📦 [Download All Files](" + $url + ")"}')
+            send_with_retry "$FOLLOWUP_PAYLOAD"
+          fi
+
+          echo "✅ All notifications sent!"
+          EOF
+          chmod +x ultimate_notify.sh
+
+          # Execute the script with all necessary data
+          ./ultimate_notify.sh "${{ secrets.DISCORD_WEBHOOK }}" "${{ env.DOMAIN }}" "${{ env.ARTIFACT_URL }}" \
+            "screenshots" "${{ env.MAX_IMAGES_TO_SEND }}" \
+            "${{ env.SUBDOMAINS_COUNT }}" \
+            "${{ env.LIVE_SERVICES_COUNT }}" \
+            "${{ env.WAYBACK_COUNT }}" \
+            "${{ env.SCREENSHOTS_COUNT }}"
 
       - name: Cleanup
         if: always()
         run: |
-          rm -rf notify.sh subdomains.txt ports.txt live-services.txt wayback-urls.txt screenshots/
+          rm -rf ultimate_notify.sh subdomains.txt ports.txt live-services.txt wayback-urls.txt screenshots/
