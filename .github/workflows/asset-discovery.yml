@@ -24,7 +24,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y chromium-browser jq libpcap-dev unzip
 
-      # --- KEY CHANGE: MANUAL INSTALLATION OF PDTM WITH UNZIP FIX ---
+      # --- FINAL FIX: CORRECT PATH AND MANUAL WAYBACKURLS INSTALL ---
       - name: Install ProjectDiscovery Tools (Manual Method)
         run: |
           # Get the latest version of pdtm
@@ -34,7 +34,7 @@ jobs:
           # Download the pdtm binary for linux amd64
           curl -sL "https://github.com/projectdiscovery/pdtm/releases/download/${PDTM_VERSION}/pdtm_${PDTM_VERSION#v}_linux_amd64.zip" -o pdtm.zip
           
-          # Unzip and install (THE FIX IS HERE: -o flag)
+          # Unzip and install
           unzip -o pdtm.zip
           sudo mv pdtm /usr/local/bin/
           sudo chmod +x /usr/local/bin/pdtm
@@ -43,17 +43,24 @@ jobs:
           sudo pdtm -install subfinder
           sudo pdtm -install naabu
           sudo pdtm -install httpx
-          sudo pdtm -install waybackurls
+          # waybackurls is not in pdtm list, will install it manually next
           
-          # Add the tools to the PATH
+          # --- CRITICAL FIX: ADD THE CORRECT PATH FOR PDTM TOOLS ---
+          echo "/root/.pdtm/go/bin" >> $GITHUB_PATH
           echo "/usr/local/bin" >> $GITHUB_PATH
 
       - name: Install Other Tools
         run: |
-          # Favicon hashing tool (still needs go install)
-          # We install Go here just for this one tool
+          # Install Go for tools that need it
           sudo apt-get install -y golang-go
+          
+          # Install waybackurls manually since pdtm failed
+          go install -v github.com/projectdiscovery/waybackurls/cmd/waybackurls@latest
+          
+          # Install gowitness
           go install github.com/sensepost/gowitness@latest
+          
+          # Add Go's bin path to the PATH
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
       - name: Set Domain
