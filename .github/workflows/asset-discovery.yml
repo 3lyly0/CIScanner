@@ -24,7 +24,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y chromium-browser jq libpcap-dev unzip
 
-      # --- KEY CHANGE: MANUAL INSTALLATION OF PDTM ---
+      # --- KEY CHANGE: MANUAL INSTALLATION OF PDTM WITH UNZIP FIX ---
       - name: Install ProjectDiscovery Tools (Manual Method)
         run: |
           # Get the latest version of pdtm
@@ -34,8 +34,8 @@ jobs:
           # Download the pdtm binary for linux amd64
           curl -sL "https://github.com/projectdiscovery/pdtm/releases/download/${PDTM_VERSION}/pdtm_${PDTM_VERSION#v}_linux_amd64.zip" -o pdtm.zip
           
-          # Unzip and install
-          unzip pdtm.zip
+          # Unzip and install (THE FIX IS HERE: -o flag)
+          unzip -o pdtm.zip
           sudo mv pdtm /usr/local/bin/
           sudo chmod +x /usr/local/bin/pdtm
           
