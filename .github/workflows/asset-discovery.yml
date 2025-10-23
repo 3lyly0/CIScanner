@@ -50,8 +50,8 @@ jobs:
           echo "/root/.pdtm/go/bin" >> $GITHUB_PATH
           echo "/usr/local/bin" >> $GITHUB_PATH
 
-      # --- NEW SIMPLER INSTALLATION (THANKS TO YOUR SUGGESTION) ---
-      - name: Install Other Tools (Simple Go Install)
+      # --- NEW ROBUST INSTALLATION METHOD (API-BASED DOWNLOAD) ---
+      - name: Install Other Tools (Simple Go Install & API Download)
         run: |
           # Install Go for tools that need it
           sudo apt-get install -y golang-go
@@ -60,13 +60,14 @@ jobs:
           echo "Installing waybackurls from tomnomnom..."
           go install github.com/tomnomnom/waybackurls@latest
           
-          # Install gowitness (THE FIX IS ON THE NEXT LINE)
-          echo "Fetching latest gowitness version..."
-          GOWITNESS_VERSION=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/sensepost/gowitness/releases/latest | jq -r '.tag_name')
-          echo "Installing gowitness version: $GOWITNESS_VERSION"
-          curl -sL "https://github.com/sensepost/gowitness/releases/download/${GOWITNESS_VERSION}/gowitness_${GOWITNESS_VERSION#v}_linux_amd64.tar.gz" -o gowitness.tar.gz
+          # Install gowitness using the API to get the direct download URL (MOST RELIABLE METHOD)
+          echo "Fetching gowitness download URL from API..."
+          GOWITNESS_DOWNLOAD_URL=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/sensepost/gowitness/releases/latest | jq -r '.assets[] | select(.name == "gowitness_linux_amd64.tar.gz") | .browser_download_url')
+          echo "Downloading gowitness from: $GOWITNESS_DOWNLOAD_URL"
+          curl -sL "$GOWITNESS_DOWNLOAD_URL" -o gowitness.tar.gz
           tar -xzf gowitness.tar.gz
-          sudo mv gowitness_${GOWITNESS_VERSION#v}_linux_amd64/gowitness /usr/local/bin/
+          # The extracted directory name will be gowitness-<version>-linux-amd64
+          sudo mv gowitness-*/gowitness /usr/local/bin/
           sudo chmod +x /usr/local/bin/gowitness
           
           # Add Go's bin path to the PATH
