@@ -57,6 +57,8 @@ jobs:
             echo "PREVIOUS_COUNT=0" >> $GITHUB_ENV
           fi
 
+      # --- CORRECTED SECTION ---
+      # This step runs ONLY if previous results exist
       - name: Compare with previous results
         if: steps.check_previous.outputs.previous_exists == 'true'
         run: |
@@ -69,13 +71,16 @@ jobs:
           # Also find removed subdomains
           comm -13 current-sorted.txt previous-sorted.txt > removed-subdomains.txt
           echo "REMOVED_COUNT=$(wc -l < removed-subdomains.txt)" >> $GITHUB_ENV
-          # If no new/removed subdomains, create empty files for the script to handle
-          touch new-subdomains.txt removed-subdomains.txt
-        else:
-          # For the first run, create empty files
+
+      # This step runs ONLY if it's the first time (no previous results)
+      - name: Prepare for first run
+        if: steps.check_previous.outputs.previous_exists == 'false'
+        run: |
           echo "NEW_COUNT=0" >> $GITHUB_ENV
           echo "REMOVED_COUNT=0" >> $GITHUB_ENV
+          # Create empty files so the notification script doesn't fail
           touch new-subdomains.txt removed-subdomains.txt
+      # --- END OF CORRECTED SECTION ---
 
       - name: Create Discord notification script
         run: |
