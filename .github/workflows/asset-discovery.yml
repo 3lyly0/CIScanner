@@ -182,7 +182,7 @@ jobs:
                     {"name": "🚀 Live Services", "value": $services, "inline": false},
                     {"name": "🕰️ Wayback URLs", "value": $wayback, "inline": true},
                     {"name": "📸 Screenshots", "value": $screenshots, "inline": true},
-                    {"name": $artifact, "value": "[Click here to download everything](" + $artifact_url + ")", "inline": false}
+                    {"name": $artifact, "value": "[Click here to download everything](\($artifact_url))", "inline": false}
                   ],
                   "footer": {"text": $footer}
                 }
