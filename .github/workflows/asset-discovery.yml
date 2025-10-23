@@ -60,12 +60,12 @@ jobs:
           go install github.com/tomnomnom/waybackurls@latest
           
           # Install gowitness (fixed - direct binary)
-          echo "Installing gowitness (direct binary)..."
-          curl -L -A "Mozilla/5.0" -o gowitness "https://github.com/sensepost/gowitness/releases/download/2.4.0/gowitness-2.4.0-linux-amd64"
-          chmod +x gowitness
-          sudo mv gowitness /usr/local/bin/gowitness
-          echo "✅ gowitness installed successfully!"
-          gowitness version
+          echo "Installing aquatone (direct binary)..."
+          apt-get install -y chromium-browser unzip
+          curl -L -o aquatone.zip https://github.com/michenriksen/aquatone/releases/download/v1.7.0/aquatone_linux_amd64_1.7.0.zip
+          unzip aquatone.zip
+          chmod +x aquatone
+          mv aquatone /usr/local/bin/aquatone
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
 
@@ -148,7 +148,7 @@ jobs:
           echo "📸 Taking screenshots of live web services..."
           mkdir -p screenshots
           # gowitness needs a list of full URLs
-          cat live-services.txt | awk '{print $1}' | gowitness file -f - -P ./screenshots --disable-logging
+          cat live-services.txt | awk '{print $1}' | aquatone -out ./screenshots
           echo "SCREENSHOTS_COUNT=$(ls -1q screenshots | wc -l)" >> $GITHUB_ENV
 
       - name: 5️⃣ Wayback URL Gathering
