@@ -63,7 +63,7 @@ jobs:
           echo "Installing aquatone (direct binary)..."
           sudo apt-get install -y chromium-browser unzip
           curl -L -o aquatone.zip https://github.com/michenriksen/aquatone/releases/download/v1.7.0/aquatone_linux_amd64_1.7.0.zip
-          unzip aquatone.zip
+          unzip -o aquatone.zip
           chmod +x aquatone
           mv aquatone /usr/local/bin/aquatone
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
