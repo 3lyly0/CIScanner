@@ -57,36 +57,28 @@ jobs:
             echo "PREVIOUS_COUNT=0" >> $GITHUB_ENV
           fi
 
-      # --- CORRECTED SECTION ---
-      # This step runs ONLY if previous results exist
       - name: Compare with previous results
         if: steps.check_previous.outputs.previous_exists == 'true'
         run: |
-          # Sort both files and find new subdomains
           sort -u current-subdomains.txt > current-sorted.txt
           sort -u previous-subdomains.txt > previous-sorted.txt
           comm -23 current-sorted.txt previous-sorted.txt > new-subdomains.txt
           echo "NEW_COUNT=$(wc -l < new-subdomains.txt)" >> $GITHUB_ENV
-          
-          # Also find removed subdomains
           comm -13 current-sorted.txt previous-sorted.txt > removed-subdomains.txt
           echo "REMOVED_COUNT=$(wc -l < removed-subdomains.txt)" >> $GITHUB_ENV
 
-      # This step runs ONLY if it's the first time (no previous results)
       - name: Prepare for first run
         if: steps.check_previous.outputs.previous_exists == 'false'
         run: |
           echo "NEW_COUNT=0" >> $GITHUB_ENV
           echo "REMOVED_COUNT=0" >> $GITHUB_ENV
-          # Create empty files so the notification script doesn't fail
           touch new-subdomains.txt removed-subdomains.txt
-      # --- END OF CORRECTED SECTION ---
 
       - name: Create Discord notification script
         run: |
           cat << 'EOF' > send_notifications.sh
           #!/bin/bash
-          set -e # Exit immediately if a command exits with a non-zero status.
+          set -e
 
           WEBHOOK_URL="$1"
           DOMAIN="$2"
@@ -96,79 +88,93 @@ jobs:
 
           # --- Helper function to send a Discord embed ---
           send_embed() {
-            local title="$1"
-            local description="$2"
-            local color="$3"
-            local footer_text="$4"
+              local title="$1"
+              local description="$2"
+              local color="$3"
+              local footer_text="$4"
 
-            local payload
-            payload=$(jq -n \
-              --arg title "$title" \
-              --arg description "$description" \
-              --argjson color "$color" \
-              --arg footer "$footer_text" \
-              '{
-                "embeds": [{
-                  "title": $title,
-                  "description": $description,
-                  "color": $color,
-                  "footer": {"text": $footer}
-                }]
-              }')
-            
-            curl -s -H "Content-Type: application/json" -X POST -d "$payload" "$WEBHOOK_URL"
+              # The description variable now contains actual newline characters
+              local payload
+              payload=$(jq -n \
+                  --arg title "$title" \
+                  --arg description "$description" \
+                  --argjson color "$color" \
+                  --arg footer "$footer_text" \
+                  '{
+                      "embeds": [{
+                          "title": $title,
+                          "description": $description,
+                          "color": $color,
+                          "footer": {"text": $footer}
+                      }]
+                  }')
+              
+              curl -s -H "Content-Type: application/json" -X POST -d "$payload" "$WEBHOOK_URL"
           }
 
           # --- Helper function to send a long list in chunks ---
           send_list_in_chunks() {
-            local file_path="$1"
-            local list_title="$2"
-            local color="$3"
-            
-            if [ ! -f "$file_path" ] || [ ! -s "$file_path" ]; then
-              return # Skip if file doesn't exist or is empty
-            fi
-
-            local total_lines
-            total_lines=$(wc -l < "$file_path")
-            local part_num=1
-            local chunk=""
-            local DISCORD_FIELD_LIMIT=1000 # Conservative limit for a field value
-
-            while IFS= read -r line; do
-              # Check if adding the next line exceeds the limit
-              if [ ${#chunk} -gt $DISCORD_FIELD_LIMIT ]; then
-                send_embed "$list_title (Part $part_num)" "```\n$chunk\n```" "$color" "Total items: $total_lines"
-                chunk="$line"
-                ((part_num++))
-              else
-                chunk+="$line\n"
+              local file_path="$1"
+              local list_title="$2"
+              local color="$3"
+              
+              if [ ! -f "$file_path" ] || [ ! -s "$file_path" ]; then
+                  return
               fi
-            done < "$file_path"
 
-            # Send the last remaining chunk
-            if [ -n "$chunk" ]; then
-              send_embed "$list_title (Part $part_num)" "```\n$chunk\n```" "$color" "Total items: $total_lines"
-            fi
+              local total_lines
+              total_lines=$(wc -l < "$file_path")
+              local part_num=1
+              local chunk=""
+              local DISCORD_FIELD_LIMIT=1000
+
+              while IFS= read -r line; do
+                  # Use printf to build the chunk with actual newlines
+                  local new_chunk
+                  printf -v new_chunk '%s%s\n' "$chunk" "$line"
+
+                  if [ ${#new_chunk} -gt $DISCORD_FIELD_LIMIT ]; then
+                      # If the new chunk is too big, send the old one
+                      local description
+                      printf -v description '```\n%s\n```' "$chunk"
+                      send_embed "$list_title (Part $part_num)" "$description" "$color" "Total items: $total_lines"
+                      
+                      # Start a new chunk with the current line
+                      printf -v chunk '%s\n' "$line"
+                      ((part_num++))
+                  else
+                      # If not too big, update the chunk
+                      chunk="$new_chunk"
+                  fi
+              done < "$file_path"
+
+              # Send the last remaining chunk
+              if [ -n "$chunk" ]; then
+                  local description
+                  printf -v description '```\n%s\n```' "$chunk"
+                  send_embed "$list_title (Part $part_num)" "$description" "$color" "Total items: $total_lines"
+              fi
           }
 
           # --- Main Execution ---
 
           # 1. Send Summary Report
-          summary_desc="**Total Current:** $SUBDOMAINS_COUNT\n**Previous:** $PREVIOUS_COUNT\n**New:** $NEW_COUNT\n**Removed:** $REMOVED_COUNT"
+          # Use printf to create the description with actual newlines
+          summary_desc=""
+          printf -v summary_desc '**Total Current:** %s\n**Previous:** %s\n**New:** %s\n**Removed:** %s' "$SUBDOMAINS_COUNT" "$PREVIOUS_COUNT" "$NEW_COUNT" "$REMOVED_COUNT"
           send_embed "Subdomain Report for $DOMAIN" "$summary_desc" "5814783" "Scan completed at $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 
           # 2. Send New Subdomains (if any)
           if [ "$NEW_COUNT" -gt 0 ]; then
-            send_list_in_chunks "$NEW_FILE" "🆕 New Subdomains" "5763719" # Green
+              send_list_in_chunks "$NEW_FILE" "🆕 New Subdomains" "5763719" # Green
           fi
 
           # 3. Send Removed Subdomains (if any)
           if [ "$REMOVED_COUNT" -gt 0 ]; then
-            send_list_in_chunks "$REMOVED_FILE" "❌ Removed Subdomains" "15548997" # Red
+              send_list_in_chunks "$REMOVED_FILE" "❌ Removed Subdomains" "15548997" # Red
           fi
 
-          # 4. Send Full Current List (optional, can be very long)
+          # 4. Send Full Current List (optional)
           # Uncomment the following line if you want to receive the full list every time
           # send_list_in_chunks "$CURRENT_FILE" "📄 Full Current Subdomain List" "10181038" # Grey
           EOF
