@@ -49,26 +49,26 @@ jobs:
           # --- CRITICAL FIX: ADD THE CORRECT PATH FOR PDTM TOOLS ---
           echo "/root/.pdtm/go/bin" >> $GITHUB_PATH
           echo "/usr/local/bin" >> $GITHUB_PATH
-
+          
       - name: Install Other Tools (Simple Go Install & Direct Download)
         run: |
           # Install Go for tools that need it
           sudo apt-get install -y golang-go
           
-          # Install waybackurls using the simple and reliable method
+          # Install waybackurls
           echo "Installing waybackurls from tomnomnom..."
           go install github.com/tomnomnom/waybackurls@latest
           
-          # Install gowitness (FIXED - correct link and format)
-          echo "Installing gowitness..."
+          # Install gowitness (fixed - direct binary)
+          echo "Installing gowitness (direct binary)..."
           GOWITNESS_VERSION=$(curl -s https://api.github.com/repos/sensepost/gowitness/releases/latest | jq -r '.tag_name')
-          curl -sL "https://github.com/sensepost/gowitness/releases/download/${GOWITNESS_VERSION}/gowitness-${GOWITNESS_VERSION#v}-linux-amd64.zip" -o gowitness.zip
-          unzip -o gowitness.zip -d gowitness-bin
-          sudo mv gowitness-bin/gowitness /usr/local/bin/
+          curl -sL "https://github.com/sensepost/gowitness/releases/download/${GOWITNESS_VERSION}/gowitness-linux-amd64" -o gowitness
+          sudo mv gowitness /usr/local/bin/
           sudo chmod +x /usr/local/bin/gowitness
           
           # Add Go's bin path to the PATH
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+
 
 
       - name: Set Domain
