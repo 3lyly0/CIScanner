@@ -23,9 +23,10 @@ jobs:
           # Update package list and install system-level dependencies
           sudo apt-get update
           # ✅ SOLUTION FOR CORE DUMP: Added all necessary libraries for the headless browser
+          # ✅ FIXED FOR UBUNTU 24.04: Replaced libasound2t64
           sudo apt-get install -y chromium-browser jq libpcap-dev unzip curl \
             libnss3 libatk-bridge2.0-0 libdrm2 libxkbcommon0 libxcomposite1 \
-            libxdamage1 libxrandr2 libgbm1 libxss1 libasound2 fonts-liberation
+            libxdamage1 libxrandr2 libgbm1 libxss1 libasound2t64 fonts-liberation
           
       - name: Install ProjectDiscovery Tools
         run: |
