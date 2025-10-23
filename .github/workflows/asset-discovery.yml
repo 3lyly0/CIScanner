@@ -23,19 +23,29 @@ jobs:
         with:
           go-version: '1.21'
 
-      - name: Install Recon Tools
+      - name: Install System Dependencies & Tools
         run: |
-          # ProjectDiscovery tools
-          go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
-          go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest
-          go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
-          go install -v github.com/projectdiscovery/waybackurls/cmd/waybackurls@latest
-          # Screenshotting tool
+          # Install system-level dependencies first
           sudo apt-get update
-          sudo apt-get install -y chromium-browser libpcap-dev # <-- FIXED HERE
-          go install -v github.com/sensepost/gowitness@latest
-          # Utility
-          sudo apt-get install -y jq
+          sudo apt-get install -y chromium-browser jq libpcap-dev
+
+      - name: Install ProjectDiscovery Tools (Official Installer)
+        run: |
+          # Download and run the official ProjectDiscovery installer
+          # This method is more reliable than 'go install' for CI/CD
+          curl -s https://raw.githubusercontent.com/projectdiscovery/uninstaller/main/install.sh | sudo bash
+          # Install the tools using the pdtm utility
+          sudo pdtm -install subfinder
+          sudo pdtm -install naabu
+          sudo pdtm -install httpx
+          sudo pdtm -install waybackurls
+          # Add the tools to the PATH
+          echo "/usr/local/bin" >> $GITHUB_PATH
+
+      - name: Install Other Tools
+        run: |
+          # Favicon hashing tool (still needs go install)
+          go install github.com/sensepost/gowitness@latest
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
       - name: Set Domain
