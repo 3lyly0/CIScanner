@@ -24,11 +24,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y chromium-browser jq libpcap-dev unzip curl
 
-      # --- FINAL FIX: CORRECT PATH AND MANUAL WAYBACKURLS INSTALL ---
+      # --- FINAL FIX: USING GITHUB TOKEN FOR RELIABLE API CALLS ---
       - name: Install ProjectDiscovery Tools (Manual Method)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Get the latest version of pdtm
-          PDTM_VERSION=$(curl -s https://api.github.com/repos/projectdiscovery/pdtm/releases/latest | jq -r '.tag_name')
+          # Get the latest version of pdtm using the token for reliability
+          PDTM_VERSION=$(curl -s -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/repos/projectdiscovery/pdtm/releases/latest | jq -r '.tag_name')
           echo "Installing pdtm version: $PDTM_VERSION"
           
           # Download the pdtm binary for linux amd64
@@ -48,21 +50,35 @@ jobs:
           echo "/root/.pdtm/go/bin" >> $GITHUB_PATH
           echo "/usr/local/bin" >> $GITHUB_PATH
 
-      # --- NEW SIMPLER AND ROBUST INSTALLATION METHOD ---
-      - name: Install Other Tools (Direct Latest Download)
+      # --- NEW ROBUST INSTALLATION METHOD WITH TOKEN ---
+      - name: Install Other Tools (Robust API Download)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Install waybackurls by downloading the latest release directly
-          echo "Installing waybackurls..."
-          curl -sL "https://github.com/projectdiscovery/waybackurls/releases/latest/download/waybackurls_linux_amd64.zip" -o waybackurls.zip
+          # Install waybackurls
+          echo "Fetching latest waybackurls version..."
+          WAYBACKURLS_VERSION=$(curl -s -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/repos/projectdiscovery/waybackurls/releases/latest | jq -r '.tag_name')
+          if [ "$WAYBACKURLS_VERSION" == "null" ] || [ -z "$WAYBACKURLS_VERSION" ]; then
+            echo "Failed to get waybackurls version from API. Exiting."
+            exit 1
+          fi
+          echo "Installing waybackurls version: $WAYBACKURLS_VERSION"
+          curl -sL "https://github.com/projectdiscovery/waybackurls/releases/download/${WAYBACKURLS_VERSION}/waybackurls_${WAYBACKURLS_VERSION#v}_linux_amd64.zip" -o waybackurls.zip
           unzip -o waybackurls.zip
           sudo mv waybackurls /usr/local/bin/
           sudo chmod +x /usr/local/bin/waybackurls
 
-          # Install gowitness by downloading the latest release directly
-          echo "Installing gowitness..."
-          curl -sL "https://github.com/sensepost/gowitness/releases/latest/download/gowitness-linux-amd64.tar.gz" -o gowitness.tar.gz
+          # Install gowitness
+          echo "Fetching latest gowitness version..."
+          GOWITNESS_VERSION=$(curl -s -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/repos/sensepost/gowitness/releases/latest | jq -r '.tag_name')
+          if [ "$GOWITNESS_VERSION" == "null" ] || [ -z "$GOWITNESS_VERSION" ]; then
+            echo "Failed to get gowitness version from API. Exiting."
+            exit 1
+          fi
+          echo "Installing gowitness version: $GOWITNESS_VERSION"
+          curl -sL "https://github.com/sensepost/gowitness/releases/download/${GOWITNESS_VERSION}/gowitness-${GOWITNESS_VERSION#v}-linux-amd64.tar.gz" -o gowitness.tar.gz
           tar -xzf gowitness.tar.gz
-          sudo mv gowitness-linux-amd64/gowitness /usr/local/bin/
+          sudo mv gowitness-${GOWITNESS_VERSION#v}-linux-amd64/gowitness /usr/local/bin/
           sudo chmod +x /usr/local/bin/gowitness
 
       - name: Set Domain
