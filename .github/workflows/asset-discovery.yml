@@ -26,9 +26,9 @@ jobs:
           
       - name: Install ProjectDiscovery Tools (Fixed Path)
         run: |
-          # Download and install pdtm
+          # Download and install pdtm (fixed version)
           echo "Installing pdtm..."
-          curl -sL https://github.com/projectdiscovery/pdtm/releases/latest/download/pdtm_linux_amd64.zip -o pdtm.zip
+          curl -sL "https://github.com/projectdiscovery/pdtm/releases/download/v0.1.3/pdtm_0.1.3_linux_amd64.zip" -o pdtm.zip
           unzip -o pdtm.zip
           sudo mv pdtm /usr/local/bin/
           sudo chmod +x /usr/local/bin/pdtm
@@ -40,15 +40,16 @@ jobs:
           sudo pdtm -install subfinder
           sudo pdtm -install naabu
           sudo pdtm -install httpx
-
+          
           # Verify installation
           which subfinder || echo "❌ subfinder not found!"
           which naabu || echo "❌ naabu not found!"
           which httpx || echo "❌ httpx not found!"
-
+          
           # Add Go and local bin paths to PATH
           echo "/usr/local/bin" >> $GITHUB_PATH
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+
 
           
       - name: Install Other Tools (Simple Go Install & Direct Download)
