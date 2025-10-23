@@ -23,32 +23,33 @@ jobs:
           # Update package list and install system-level dependencies
           sudo apt-get update
           sudo apt-get install -y chromium-browser jq libpcap-dev unzip curl
-
-      # --- FINAL FIX: USING GITHUB TOKEN FOR RELIABLE API CALLS ---
-      - name: Install ProjectDiscovery Tools (Manual Method)
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Install ProjectDiscovery Tools (Fixed Path)
         run: |
-          # Get the latest version of pdtm using the token for reliability
-          PDTM_VERSION=$(curl -s -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/repos/projectdiscovery/pdtm/releases/latest | jq -r '.tag_name')
-          echo "Installing pdtm version: $PDTM_VERSION"
-          
-          # Download the pdtm binary for linux amd64
-          curl -sL "https://github.com/projectdiscovery/pdtm/releases/download/${PDTM_VERSION}/pdtm_${PDTM_VERSION#v}_linux_amd64.zip" -o pdtm.zip
-          
-          # Unzip and install
+          # Download and install pdtm
+          echo "Installing pdtm..."
+          curl -sL https://github.com/projectdiscovery/pdtm/releases/latest/download/pdtm_linux_amd64.zip -o pdtm.zip
           unzip -o pdtm.zip
           sudo mv pdtm /usr/local/bin/
           sudo chmod +x /usr/local/bin/pdtm
           
-          # Install the tools using the pdtm utility
+          # Configure PDTM to install tools into /usr/local/bin instead of root
+          export PDTM_DIR="/usr/local/bin"
+          
+          echo "Installing ProjectDiscovery tools..."
           sudo pdtm -install subfinder
           sudo pdtm -install naabu
           sudo pdtm -install httpx
-          
-          # --- CRITICAL FIX: ADD THE CORRECT PATH FOR PDTM TOOLS ---
-          echo "/root/.pdtm/go/bin" >> $GITHUB_PATH
+
+          # Verify installation
+          which subfinder || echo "❌ subfinder not found!"
+          which naabu || echo "❌ naabu not found!"
+          which httpx || echo "❌ httpx not found!"
+
+          # Add Go and local bin paths to PATH
           echo "/usr/local/bin" >> $GITHUB_PATH
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+
           
       - name: Install Other Tools (Simple Go Install & Direct Download)
         run: |
