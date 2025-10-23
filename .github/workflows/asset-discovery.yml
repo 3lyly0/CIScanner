@@ -1,0 +1,161 @@
+name: Asset Discovery & Intelligence Gathering
+
+on:
+  workflow_dispatch:
+    inputs:
+      domain:
+        description: 'Domain for deep recon'
+        required: true
+        default: 'example.com'
+  schedule:
+    # Runs every Sunday at 7 AM UTC (a day after the vulnerability scan)
+    - cron: '0 7 * * 0'
+
+jobs:
+  recon:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+
+      - name: Install Recon Tools
+        run: |
+          # ProjectDiscovery tools
+          go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+          go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest
+          go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
+          go install -v github.com/projectdiscovery/waybackurls/cmd/waybackurls@latest
+          # Screenshotting tool
+          sudo apt-get update
+          sudo apt-get install -y chromium-browser
+          go install -v github.com/sensepost/gowitness@latest
+          # Utility
+          sudo apt-get install -y jq
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+
+      - name: Set Domain
+        id: set_domain
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "DOMAIN=${{ github.event.inputs.domain }}" >> $GITHUB_ENV
+          else
+            echo "DOMAIN=example.com" >> $GITHUB_ENV
+          fi
+
+      - name: Create Notification Script
+        run: |
+          cat << 'EOF' > notify.sh
+          #!/bin/bash
+          set -e
+          WEBHOOK_URL="$1"
+          DOMAIN="$2"
+
+          send_embed() {
+              local title="$1"
+              local description="$2"
+              local color="$3"
+              local payload
+              payload=$(jq -n \
+                  --arg title "$title" \
+                  --arg description "$description" \
+                  --argjson color "$color" \
+                  --arg footer "Recon completed at $(date -u '+%Y-%m-%d %H:%M:%S UTC')" \
+                  '{
+                      "embeds": [{
+                          "title": $title,
+                          "description": $description,
+                          "color": $color,
+                          "footer": {"text": $footer}
+                      }]
+                  }')
+              curl -s -H "Content-Type: application/json" -X POST -d "$payload" "$WEBHOOK_URL"
+          }
+
+          case "$3" in
+            "start")
+              send_embed "🗺️ Deep Recon Started" "**Target:** $DOMAIN\n**Tools:** Subfinder, Naabu, Httpx, Gowitness, Waybackurls" "3447003"
+              ;;
+            "summary")
+              printf -v desc '**Target:** %s\n\n**📊 Discovery Summary:**\n- **Subdomains Found:** %s\n- **Open Ports Found:** %s\n- **Live Web Services:** %s\n- **Screenshots Taken:** %s\n- **Wayback URLs Gathered:** %s\n\n📦 Detailed reports and screenshots are available in the [GitHub Actions artifacts](%s).' \
+                "$DOMAIN" "$4" "$5" "$6" "$7" "$8" "$9"
+              send_embed "📋 Recon Report for $DOMAIN" "$desc" "10181038"
+              ;;
+          esac
+          EOF
+          chmod +x notify.sh
+
+      - name: Notify Start
+        run: |
+          ./notify.sh "${{ secrets.DISCORD_WEBHOOK }}" "${{ env.DOMAIN }}" "start"
+
+      - name: 1️⃣ Subdomain Enumeration
+        run: |
+          echo "🔍 Enumerating subdomains for ${{ env.DOMAIN }}..."
+          subfinder -d ${{ env.DOMAIN }} -silent -o subdomains.txt
+          echo "SUBDOMAINS_COUNT=$(wc -l < subdomains.txt)" >> $GITHUB_ENV
+
+      - name: 2️⃣ Port Scanning
+        run: |
+          echo "🚀 Scanning ports on discovered subdomains..."
+          naabu -list subdomains.txt -silent -top-ports 1000 -o ports.txt
+          echo "PORTS_COUNT=$(wc -l < ports.txt)" >> $GITHUB_ENV
+
+      - name: 3️⃣ Probing & Technology Identification
+        run: |
+          echo "🌐 Probing for live web services and identifying technologies..."
+          cat ports.txt | httpx -silent -title -tech-detect -status-code -o live-services.txt
+          echo "LIVE_SERVICES_COUNT=$(wc -l < live-services.txt)" >> $GITHUB_ENV
+
+      - name: 4️⃣ Screenshotting Live Services
+        run: |
+          echo "📸 Taking screenshots of live web services..."
+          mkdir -p screenshots
+          # gowitness needs a list of full URLs
+          cat live-services.txt | awk '{print $1}' | gowitness file -f - -P ./screenshots --disable-logging
+          echo "SCREENSHOTS_COUNT=$(ls -1q screenshots | wc -l)" >> $GITHUB_ENV
+
+      - name: 5️⃣ Wayback URL Gathering
+        run: |
+          echo "🕰️ Gathering URLs from Wayback Machine..."
+          waybackurls ${{ env.DOMAIN }} | sort -u > wayback-urls.txt
+          echo "WAYBACK_COUNT=$(wc -l < wayback-urls.txt)" >> $GITHUB_ENV
+
+      - name: Notify Final Summary
+        env:
+          GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          ./notify.sh "${{ secrets.DISCORD_WEBHOOK }}" "${{ env.DOMAIN }}" "summary" \
+            "${{ env.SUBDOMAINS_COUNT }}" \
+            "${{ env.PORTS_COUNT }}" \
+            "${{ env.LIVE_SERVICES_COUNT }}" \
+            "${{ env.SCREENSHOTS_COUNT }}" \
+            "${{ env.WAYBACK_COUNT }}" \
+            "${{ env.GITHUB_RUN_URL }}"
+
+      - name: Upload Recon Report as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: recon-report-${{ env.DOMAIN }}-${{ github.run_number }}
+          path: |
+            subdomains.txt
+            ports.txt
+            live-services.txt
+            wayback-urls.txt
+          retention-days: 30
+
+      - name: Upload Screenshots as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-${{ env.DOMAIN }}-${{ github.run_number }}
+          path: screenshots/
+          retention-days: 30
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -rf notify.sh subdomains.txt ports.txt live-services.txt wayback-urls.txt screenshots/
