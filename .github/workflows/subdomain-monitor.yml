@@ -61,95 +61,124 @@ jobs:
         if: steps.check_previous.outputs.previous_exists == 'true'
         run: |
           # Sort both files and find new subdomains
-          sort current-subdomains.txt > current-sorted.txt
-          sort previous-subdomains.txt > previous-sorted.txt
+          sort -u current-subdomains.txt > current-sorted.txt
+          sort -u previous-subdomains.txt > previous-sorted.txt
           comm -23 current-sorted.txt previous-sorted.txt > new-subdomains.txt
           echo "NEW_COUNT=$(wc -l < new-subdomains.txt)" >> $GITHUB_ENV
           
           # Also find removed subdomains
           comm -13 current-sorted.txt previous-sorted.txt > removed-subdomains.txt
           echo "REMOVED_COUNT=$(wc -l < removed-subdomains.txt)" >> $GITHUB_ENV
+          # If no new/removed subdomains, create empty files for the script to handle
+          touch new-subdomains.txt removed-subdomains.txt
+        else:
+          # For the first run, create empty files
+          echo "NEW_COUNT=0" >> $GITHUB_ENV
+          echo "REMOVED_COUNT=0" >> $GITHUB_ENV
+          touch new-subdomains.txt removed-subdomains.txt
 
-      - name: Prepare Discord notification
-        env:
-          DOMAIN: ${{ github.event.inputs.domain || 'example.com' }}
+      - name: Create Discord notification script
         run: |
-          # Format current subdomains (limit to 15)
-          CURRENT_SUBDOMAINS=$(head -n 15 current-subdomains.txt | sed 's/^/- /')
-          if [ $SUBDOMAINS_COUNT -gt 15 ]; then
-            CURRENT_SUBDOMAINS="$CURRENT_SUBDOMAINS\n... and $((SUBDOMAINS_COUNT - 15)) more"
-          fi
-          
-          # Format previous subdomains (limit to 15)
-          if [ $PREVIOUS_COUNT -gt 0 ]; then
-            PREV_SUBDOMAINS=$(head -n 15 previous-subdomains.txt | sed 's/^/- /')
-            if [ $PREVIOUS_COUNT -gt 15 ]; then
-              PREV_SUBDOMAINS="$PREV_SUBDOMAINS\n... and $((PREVIOUS_COUNT - 15)) more"
-            fi
-          else
-            PREV_SUBDOMAINS="No previous data"
-          fi
-          
-          # Format new subdomains (limit to 10)
-          if [ "$previous_exists" == "true" ] && [ $NEW_COUNT -gt 0 ]; then
-            NEW_SUBDOMAINS=$(head -n 10 new-subdomains.txt | sed 's/^/- /')
-            if [ $NEW_COUNT -gt 10 ]; then
-              NEW_SUBDOMAINS="$NEW_SUBDOMAINS\n... and $((NEW_COUNT - 10)) more"
-            fi
-          else
-            NEW_SUBDOMAINS="None"
-          fi
-          
-          # Format removed subdomains (limit to 10)
-          if [ "$previous_exists" == "true" ] && [ $REMOVED_COUNT -gt 0 ]; then
-            REMOVED_SUBDOMAINS=$(head -n 10 removed-subdomains.txt | sed 's/^/- /')
-            if [ $REMOVED_COUNT -gt 10 ]; then
-              REMOVED_SUBDOMAINS="$REMOVED_SUBDOMAINS\n... and $((REMOVED_COUNT - 10)) more"
-            fi
-          else
-            REMOVED_SUBDOMAINS="None"
-          fi
-          
-          # Create Discord embed
-          PAYLOAD=$(jq -n \
-            --arg title "Subdomain Report for $DOMAIN" \
-            --arg current "$SUBDOMAINS_COUNT" \
-            --arg previous "$PREVIOUS_COUNT" \
-            --arg new "$NEW_COUNT" \
-            --arg removed "$REMOVED_COUNT" \
-            --arg currentlist "$CURRENT_SUBDOMAINS" \
-            --arg prevlist "$PREV_SUBDOMAINS" \
-            --arg newlist "$NEW_SUBDOMAINS" \
-            --arg removedlist "$REMOVED_SUBDOMAINS" \
-            '{
-              "embeds": [{
-                "title": $title,
-                "color": 5814783,
-                "fields": [
-                  {"name": "Current Subdomains", "value": $current, "inline": true},
-                  {"name": "Previous Subdomains", "value": $previous, "inline": true},
-                  {"name": "New Subdomains", "value": $new, "inline": true},
-                  {"name": "Removed Subdomains", "value": $removed, "inline": true},
-                  {"name": "Current Subdomains", "value": $currentlist},
-                  {"name": "Previous Subdomains", "value": $prevlist},
-                  {"name": "New Subdomains", "value": $newlist},
-                  {"name": "Removed Subdomains", "value": $removedlist}
-                ],
-                "footer": {"text": "RobustaStudio Subdomain Monitor"}
-              }]
-            }')
-          
-          echo "PAYLOAD<<EOF" >> $GITHUB_ENV
-          echo "$PAYLOAD" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
+          cat << 'EOF' > send_notifications.sh
+          #!/bin/bash
+          set -e # Exit immediately if a command exits with a non-zero status.
 
-      - name: Send to Discord
+          WEBHOOK_URL="$1"
+          DOMAIN="$2"
+          CURRENT_FILE="$3"
+          NEW_FILE="$4"
+          REMOVED_FILE="$5"
+
+          # --- Helper function to send a Discord embed ---
+          send_embed() {
+            local title="$1"
+            local description="$2"
+            local color="$3"
+            local footer_text="$4"
+
+            local payload
+            payload=$(jq -n \
+              --arg title "$title" \
+              --arg description "$description" \
+              --argjson color "$color" \
+              --arg footer "$footer_text" \
+              '{
+                "embeds": [{
+                  "title": $title,
+                  "description": $description,
+                  "color": $color,
+                  "footer": {"text": $footer}
+                }]
+              }')
+            
+            curl -s -H "Content-Type: application/json" -X POST -d "$payload" "$WEBHOOK_URL"
+          }
+
+          # --- Helper function to send a long list in chunks ---
+          send_list_in_chunks() {
+            local file_path="$1"
+            local list_title="$2"
+            local color="$3"
+            
+            if [ ! -f "$file_path" ] || [ ! -s "$file_path" ]; then
+              return # Skip if file doesn't exist or is empty
+            fi
+
+            local total_lines
+            total_lines=$(wc -l < "$file_path")
+            local part_num=1
+            local chunk=""
+            local DISCORD_FIELD_LIMIT=1000 # Conservative limit for a field value
+
+            while IFS= read -r line; do
+              # Check if adding the next line exceeds the limit
+              if [ ${#chunk} -gt $DISCORD_FIELD_LIMIT ]; then
+                send_embed "$list_title (Part $part_num)" "```\n$chunk\n```" "$color" "Total items: $total_lines"
+                chunk="$line"
+                ((part_num++))
+              else
+                chunk+="$line\n"
+              fi
+            done < "$file_path"
+
+            # Send the last remaining chunk
+            if [ -n "$chunk" ]; then
+              send_embed "$list_title (Part $part_num)" "```\n$chunk\n```" "$color" "Total items: $total_lines"
+            fi
+          }
+
+          # --- Main Execution ---
+
+          # 1. Send Summary Report
+          summary_desc="**Total Current:** $SUBDOMAINS_COUNT\n**Previous:** $PREVIOUS_COUNT\n**New:** $NEW_COUNT\n**Removed:** $REMOVED_COUNT"
+          send_embed "Subdomain Report for $DOMAIN" "$summary_desc" "5814783" "Scan completed at $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+
+          # 2. Send New Subdomains (if any)
+          if [ "$NEW_COUNT" -gt 0 ]; then
+            send_list_in_chunks "$NEW_FILE" "🆕 New Subdomains" "5763719" # Green
+          fi
+
+          # 3. Send Removed Subdomains (if any)
+          if [ "$REMOVED_COUNT" -gt 0 ]; then
+            send_list_in_chunks "$REMOVED_FILE" "❌ Removed Subdomains" "15548997" # Red
+          fi
+
+          # 4. Send Full Current List (optional, can be very long)
+          # Uncomment the following line if you want to receive the full list every time
+          # send_list_in_chunks "$CURRENT_FILE" "📄 Full Current Subdomain List" "10181038" # Grey
+          EOF
+          chmod +x send_notifications.sh
+
+      - name: Send Discord notifications
         env:
           WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK}}
+          DOMAIN: ${{ github.event.inputs.domain || 'example.com' }}
+          SUBDOMAINS_COUNT: ${{ env.SUBDOMAINS_COUNT }}
+          PREVIOUS_COUNT: ${{ env.PREVIOUS_COUNT }}
+          NEW_COUNT: ${{ env.NEW_COUNT }}
+          REMOVED_COUNT: ${{ env.REMOVED_COUNT }}
         run: |
-          curl -H "Content-Type: application/json" \
-            -d "$PAYLOAD" \
-            "$WEBHOOK_URL"
+          ./send_notifications.sh "$WEBHOOK_URL" "$DOMAIN" current-subdomains.txt new-subdomains.txt removed-subdomains.txt
 
       - name: Update previous results
         run: |
@@ -170,4 +199,4 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          rm -f current-subdomains.txt previous-subdomains.txt new-subdomains.txt removed-subdomains.txt current-sorted.txt previous-sorted.txt
+          rm -f current-subdomains.txt previous-subdomains.txt new-subdomains.txt removed-subdomains.txt current-sorted.txt previous-sorted.txt send_notifications.sh
