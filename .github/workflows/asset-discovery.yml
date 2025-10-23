@@ -61,7 +61,7 @@ jobs:
           
           # Install gowitness (fixed - direct binary)
           echo "Installing gowitness (direct binary)..."
-          curl -L -o gowitness "https://github.com/sensepost/gowitness/releases/download/2.5.1/gowitness-2.5.1-linux-amd64"
+          curl -L -A "Mozilla/5.0" -o gowitness "https://github.com/sensepost/gowitness/releases/download/2.5.1/gowitness-2.5.1-linux-amd64"
           chmod +x gowitness
           sudo mv gowitness /usr/local/bin/gowitness
           echo "✅ gowitness installed successfully!"
