@@ -46,13 +46,15 @@ jobs:
 
       - name: Notify Start
         run: |
-          MESSAGE="🔍 **Scan Started**
-**Domain:** ${{ env.DOMAIN }}
-**Trigger:** ${{ github.event_name }}
-**Tools:** Subfinder + Nuclei"
+          MESSAGE="🔍 **Scan Started**" \
+                  "**Domain:** ${{ env.DOMAIN }}" \
+                  "**Trigger:** ${{ github.event_name }}" \
+                  "**Tools:** Subfinder + Nuclei"
+      
           curl -X POST -H "Content-Type: application/json" \
-            -d "{\"content\": $(echo "$MESSAGE" | jq -Rs .)}" \
+            -d "{\"content\": $(echo \"$MESSAGE\" | jq -Rs .)}" \
             "${{ env.DISCORD_WEBHOOK }}"
+
 
       - name: Run Subfinder
         run: |
