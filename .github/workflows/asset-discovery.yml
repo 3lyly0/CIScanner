@@ -18,25 +18,33 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # --- KEY CHANGE 1: REMOVED GO SETUP ---
-      # We don't need to setup Go because we will use pre-compiled binaries.
-
       - name: Install System Dependencies & Tools
         run: |
           # Update package list and install system-level dependencies
           sudo apt-get update
-          sudo apt-get install -y chromium-browser jq libpcap-dev
+          sudo apt-get install -y chromium-browser jq libpcap-dev unzip
 
-      - name: Install ProjectDiscovery Tools (Official Installer)
+      # --- KEY CHANGE: MANUAL INSTALLATION OF PDTM ---
+      - name: Install ProjectDiscovery Tools (Manual Method)
         run: |
-          # Download and run the official ProjectDiscovery installer
-          # This method is more reliable than 'go install' for CI/CD
-          curl -s https://raw.githubusercontent.com/projectdiscovery/uninstaller/main/install.sh | sudo bash
+          # Get the latest version of pdtm
+          PDTM_VERSION=$(curl -s https://api.github.com/repos/projectdiscovery/pdtm/releases/latest | jq -r '.tag_name')
+          echo "Installing pdtm version: $PDTM_VERSION"
+          
+          # Download the pdtm binary for linux amd64
+          curl -sL "https://github.com/projectdiscovery/pdtm/releases/download/${PDTM_VERSION}/pdtm_${PDTM_VERSION#v}_linux_amd64.zip" -o pdtm.zip
+          
+          # Unzip and install
+          unzip pdtm.zip
+          sudo mv pdtm /usr/local/bin/
+          sudo chmod +x /usr/local/bin/pdtm
+          
           # Install the tools using the pdtm utility
           sudo pdtm -install subfinder
           sudo pdtm -install naabu
           sudo pdtm -install httpx
           sudo pdtm -install waybackurls
+          
           # Add the tools to the PATH
           echo "/usr/local/bin" >> $GITHUB_PATH
 
