@@ -65,7 +65,7 @@ jobs:
           chmod +x gowitness
           sudo mv gowitness /usr/local/bin/gowitness
           echo "✅ gowitness installed successfully!"
-          gowitness --version
+          gowitness version
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
 
