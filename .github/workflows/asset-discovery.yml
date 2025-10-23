@@ -1,28 +1,30 @@
-name: Asset Discovery & Intelligence Gathering
+name: Origin IP Hunter
 
 on:
   workflow_dispatch:
     inputs:
       domain:
-        description: 'Domain for deep recon'
+        description: 'Target domain to hunt for its origin IP'
         required: true
         default: 'example.com'
-  schedule:
-    # Runs every Sunday at 7 AM UTC (a day after the vulnerability scan)
-    - cron: '0 7 * * 0'
+      # Optional: Add Shodan API key for more power
+      shodan_api_key:
+        description: 'Shodan API Key (optional, for enhanced results)'
+        required: false
 
 jobs:
-  recon:
+  hunt:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # To upload artifacts
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Install System Dependencies & Tools
         run: |
-          # Update package list and install system-level dependencies
           sudo apt-get update
-          sudo apt-get install -y chromium-browser jq libpcap-dev unzip curl
+          sudo apt-get install -y jq whois nmap curl libpcap-dev unzip
 
       # --- FINAL FIX: USING GITHUB TOKEN FOR RELIABLE API CALLS ---
       - name: Install ProjectDiscovery Tools (Manual Method)
@@ -43,52 +45,41 @@ jobs:
           
           # Install the tools using the pdtm utility
           sudo pdtm -install subfinder
-          sudo pdtm -install naabu
+          sudo pdtm -install puredns
           sudo pdtm -install httpx
+          sudo pdtm -install naabu
+          sudo pdtm -install uncover
           
           # --- CRITICAL FIX: ADD THE CORRECT PATH FOR PDTM TOOLS ---
           echo "/root/.pdtm/go/bin" >> $GITHUB_PATH
           echo "/usr/local/bin" >> $GITHUB_PATH
 
-      # --- NEW ROBUST INSTALLATION METHOD WITH TOKEN ---
-      - name: Install Other Tools (Robust API Download)
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # --- NEW SIMPLER INSTALLATION (THANKS TO YOUR SUGGESTION) ---
+      - name: Install Other Tools (Simple Go Install)
         run: |
-          # Install waybackurls
-          echo "Fetching latest waybackurls version..."
-          WAYBACKURLS_VERSION=$(curl -s -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/repos/projectdiscovery/waybackurls/releases/latest | jq -r '.tag_name')
-          if [ "$WAYBACKURLS_VERSION" == "null" ] || [ -z "$WAYBACKURLS_VERSION" ]; then
-            echo "Failed to get waybackurls version from API. Exiting."
-            exit 1
-          fi
-          echo "Installing waybackurls version: $WAYBACKURLS_VERSION"
-          curl -sL "https://github.com/projectdiscovery/waybackurls/releases/download/${WAYBACKURLS_VERSION}/waybackurls_${WAYBACKURLS_VERSION#v}_linux_amd64.zip" -o waybackurls.zip
-          unzip -o waybackurls.zip
-          sudo mv waybackurls /usr/local/bin/
-          sudo chmod +x /usr/local/bin/waybackurls
-
+          # Install Go for tools that need it
+          sudo apt-get install -y golang-go
+          
           # Install gowitness
           echo "Fetching latest gowitness version..."
-          GOWITNESS_VERSION=$(curl -s -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/repos/sensepost/gowitness/releases/latest | jq -r '.tag_name')
-          if [ "$GOWITNESS_VERSION" == "null" ] || [ -z "$GOWITNESS_VERSION" ]; then
-            echo "Failed to get gowitness version from API. Exiting."
-            exit 1
-          fi
+          GOWITNESS_VERSION=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/sensepost/gowitness/releases/latest | jq -r '.tag_name')
           echo "Installing gowitness version: $GOWITNESS_VERSION"
           curl -sL "https://github.com/sensepost/gowitness/releases/download/${GOWITNESS_VERSION}/gowitness-${GOWITNESS_VERSION#v}-linux-amd64.tar.gz" -o gowitness.tar.gz
           tar -xzf gowitness.tar.gz
           sudo mv gowitness-${GOWITNESS_VERSION#v}-linux-amd64/gowitness /usr/local/bin/
           sudo chmod +x /usr/local/bin/gowitness
+          
+          # Add Go's bin path to the PATH
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
       - name: Set Domain
-        id: set_domain
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "DOMAIN=${{ github.event.inputs.domain }}" >> $GITHUB_ENV
           else
             echo "DOMAIN=example.com" >> $GITHUB_ENV
           fi
+          echo "TARGET_DOMAIN=$(echo ${{ env.DOMAIN }} | awk -F. '{print $(NF-1)"."$NF}')" >> $GITHUB_ENV
 
       - name: Create Notification Script
         run: |
@@ -97,7 +88,6 @@ jobs:
           set -e
           WEBHOOK_URL="$1"
           DOMAIN="$2"
-
           send_embed() {
               local title="$1"
               local description="$2"
@@ -107,7 +97,7 @@ jobs:
                   --arg title "$title" \
                   --arg description "$description" \
                   --argjson color "$color" \
-                  --arg footer "Recon completed at $(date -u '+%Y-%m-%d %H:%M:%S UTC')" \
+                  --arg footer "Hunt completed at $(date -u '+%Y-%m-%d %H:%M:%S UTC')" \
                   '{
                       "embeds": [{
                           "title": $title,
@@ -118,15 +108,14 @@ jobs:
                   }')
               curl -s -H "Content-Type: application/json" -X POST -d "$payload" "$WEBHOOK_URL"
           }
-
           case "$3" in
             "start")
-              send_embed "🗺️ Deep Recon Started" "**Target:** $DOMAIN\n**Tools:** Subfinder, Naabu, Httpx, Gowitness, Waybackurls" "3447003"
+              send_embed "🎯 Origin IP Hunt Started" "**Target:** $DOMAIN\n**Methodology:** Multi-vector recon & correlation" "16711680"
               ;;
             "summary")
-              printf -v desc '**Target:** %s\n\n**📊 Discovery Summary:**\n- **Subdomains Found:** %s\n- **Open Ports Found:** %s\n- **Live Web Services:** %s\n- **Screenshots Taken:** %s\n- **Wayback URLs Gathered:** %s\n\n📦 Detailed reports and screenshots are available in the [GitHub Actions artifacts](%s).' \
-                "$DOMAIN" "$4" "$5" "$6" "$7" "$8" "$9"
-              send_embed "📋 Recon Report for $DOMAIN" "$desc" "10181038"
+              printf -v desc '**Target:** %s\n\n**🔍 Hunt Summary:**\n- **Total Subdomains Found:** %s\n- **Total Unique IPs Discovered:** %s\n- **Potential Origin IPs:** %s\n- **Known WAF/CDN IPs:** %s\n\n📦 The full detailed report with all evidence is available in the [GitHub Actions artifacts](%s).' \
+                "$DOMAIN" "$4" "$5" "$6" "$7" "$8"
+              send_embed "📋 IP Hunt Report for $DOMAIN" "$desc" "10181038"
               ;;
           esac
           EOF
@@ -136,37 +125,96 @@ jobs:
         run: |
           ./notify.sh "${{ secrets.DISCORD_WEBHOOK }}" "${{ env.DOMAIN }}" "start"
 
-      - name: 1️⃣ Subdomain Enumeration
+      - name: 1️⃣ Massive Subdomain Discovery
         run: |
-          echo "🔍 Enumerating subdomains for ${{ env.DOMAIN }}..."
-          subfinder -d ${{ env.DOMAIN }} -silent -o subdomains.txt
-          echo "SUBDOMAINS_COUNT=$(wc -l < subdomains.txt)" >> $GITHUB_ENV
+          echo "[+] Discovering subdomains with multiple sources..."
+          subfinder -d ${{ env.DOMAIN }} -silent -o subdomains_subfinder.txt
+          # Use a small, effective wordlist for bruteforcing
+          puredns bruteforce ${{ env.TARGET_DOMAIN }} -w /usr/share/wordlists/seclists/Discovery/DNS/subdomains-top1million-5000.txt -r 8.8.8.8,1.1.1.1 -silent -o subdomains_bruteforce.txt
+          cat subdomains_subfinder.txt subdomains_bruteforce.txt | sort -u > all_subdomains.txt
+          echo "SUBDOMAINS_COUNT=$(wc -l < all_subdomains.txt)" >> $GITHUB_ENV
 
-      - name: 2️⃣ Port Scanning
+      - name: 2️⃣ DNS Deep Dive & IP Harvesting
         run: |
-          echo "🚀 Scanning ports on discovered subdomains..."
-          naabu -list subdomains.txt -silent -top-ports 1000 -o ports.txt
-          echo "PORTS_COUNT=$(wc -l < ports.txt)" >> $GITHUB_ENV
+          echo "[+] Performing deep DNS analysis..."
+          # Get all record types for the main domain
+          dig +noall +answer ${{ env.DOMAIN }} ANY > dns_main.txt
+          # Get A records for all subdomains
+          cat all_subdomains.txt | xargs -I {} dig +short {} A | grep -E '([0-9]{1,3}\.){3}[0-9]{1,3}' > dns_subdomain_ips.txt
+          # Get MX records (often point to origin)
+          dig +short ${{ env.DOMAIN }} MX | awk '{print $2}' | xargs -I {} dig +short {} A | grep -E '([0-9]{1,3}\.){3}[0-9]{1,3}' > dns_mx_ips.txt
+          # Combine all found IPs
+          cat dns_main.txt dns_subdomain_ips.txt dns_mx_ips.txt | grep -E '([0-9]{1,3}\.){3}[0-9]{1,3}' | sort -u > all_discovered_ips.txt
+          echo "TOTAL_IPS=$(wc -l < all_discovered_ips.txt)" >> $GITHUB_ENV
 
-      - name: 3️⃣ Probing & Technology Identification
+      - name: 3️⃣ Probing & WAF/CDN Identification
         run: |
-          echo "🌐 Probing for live web services and identifying technologies..."
-          cat ports.txt | httpx -silent -title -tech-detect -status-code -o live-services.txt
-          echo "LIVE_SERVICES_COUNT=$(wc -l < live-services.txt)" >> $GITHUB_ENV
+          echo "[+] Probing hosts and identifying WAFs/CDNs..."
+          # httpx will detect technologies and CDN/WAF usage
+          cat all_subdomains.txt | httpx -silent -cdn -tech-detect -status-code -o live_hosts.txt
+          # Extract IPs from live hosts
+          cat live_hosts.txt | awk '{print $2}' | sort -u > live_host_ips.txt
+          # Identify known CDN/WAF IPs
+          grep -i -E 'cloudflare|incapsula|fastly|cloudfront|akamai' live_hosts.txt | awk '{print $2}' | sort -u > cdn_waf_ips.txt
+          echo "CDN_WAF_IPS_COUNT=$(wc -l < cdn_waf_ips.txt)" >> $GITHUB_ENV
 
-      - name: 4️⃣ Screenshotting Live Services
+      - name: 4️⃣ Favicon Hashing (Shodan Correlation)
         run: |
-          echo "📸 Taking screenshots of live web services..."
-          mkdir -p screenshots
-          # gowitness needs a list of full URLs
-          cat live-services.txt | awk '{print $1}' | gowitness file -f - -P ./screenshots --disable-logging
-          echo "SCREENSHOTS_COUNT=$(ls -1q screenshots | wc -l)" >> $GITHUB_ENV
+          echo "[+] Calculating Favicon hashes for Shodan correlation..."
+          mkdir -p favicons
+          # Get favicon from the main domain
+          gowitness single ${{ env.DOMAIN }} -P ./favicons --disable-logging || true
+          # Calculate murmurhash
+          if [ -f "./favicons/${{ env.DOMAIN }}.png" ]; then
+            FAVICON_HASH=$(gowitness hash ./favicons/${{ env.DOMAIN }}.png | awk '{print $2}')
+            echo "FAVICON_HASH=$FAVICON_HASH" >> $GITHUB_ENV
+            echo "[+] Favicon Hash for ${{ env.DOMAIN }}: $FAVICON_HASH"
+            echo "Search this hash on Shodan to find other servers on the same infrastructure." >> potential_origin_ips.txt
+          fi
 
-      - name: 5️⃣ Wayback URL Gathering
+      - name: 5️⃣ ASN & Netblock Expansion
         run: |
-          echo "🕰️ Gathering URLs from Wayback Machine..."
-          waybackurls ${{ env.DOMAIN }} | sort -u > wayback-urls.txt
-          echo "WAYBACK_COUNT=$(wc -l < wayback-urls.txt)" >> $GITHUB_ENV
+          echo "[+] Expanding search to discovered netblocks..."
+          > netblock_ips.txt
+          while read -r ip; do
+            echo "[+] Investigating IP: $ip"
+            # Get CIDR from whois
+            CIDR=$(whois -h whois.radb.net "$ip" | grep -Eo "route:[0-9 ]+" | awk '{print $2}' | head -1)
+            if [ -n "$CIDR" ]; then
+              echo "[+] Found CIDR: $CIDR"
+              # Scan top 100 ports in the netblock
+              naabu -cidr "$CIDR" -top-ports 100 -silent -o netblock_scan_temp.txt
+              cat netblock_scan_temp.txt >> netblock_ips.txt
+            fi
+          done < live_host_ips.txt
+          sort -u netblock_ips.txt -o netblock_ips.txt
+
+      - name: 6️⃣ Correlate & Generate Final Report
+        run: |
+          echo "========================================" > real_ip_report.txt
+          echo "   Origin IP Hunt Report for ${{ env.DOMAIN }}" >> real_ip_report.txt
+          echo "========================================" >> real_ip_report.txt
+          echo "" >> real_ip_report.txt
+          echo "--- [1] POTENTIAL ORIGIN IPS ---" >> real_ip_report.txt
+          echo "These IPs are NOT from known CDNs/WAFs and are strong candidates." >> real_ip_report.txt
+          # IPs that are live but not in the CDN list
+          comm -23 <(sort live_host_ips.txt) <(sort cdn_waf_ips.txt) >> potential_origin_ips.txt
+          cat potential_origin_ips.txt >> real_ip_report.txt
+          echo "" >> real_ip_report.txt
+          echo "--- [2] FAVICON HASH ---" >> real_ip_report.txt
+          echo "Use this hash on Shodan/censys to find related infrastructure." >> real_ip_report.txt
+          echo "Favicon Hash: ${{ env.FAVICON_HASH }}" >> real_ip_report.txt
+          echo "" >> real_ip_report.txt
+          echo "--- [3] NETBLOCK DISCOVERIES ---" >> real_ip_report.txt
+          echo "Live hosts found in the same ASN as the target's servers." >> real_ip_report.txt
+          cat netblock_ips.txt >> real_ip_report.txt
+          echo "" >> real_ip_report.txt
+          echo "--- [4] ALL DISCOVERED IPS ---" >> real_ip_report.txt
+          cat all_discovered_ips.txt >> real_ip_report.txt
+          echo "" >> real_ip_report.txt
+          echo "--- [5] ALL LIVE HOSTS ---" >> real_ip_report.txt
+          cat live_hosts.txt >> real_ip_report.txt
+          echo "POTENTIAL_ORIGIN_COUNT=$(wc -l < potential_origin_ips.txt)" >> $GITHUB_ENV
 
       - name: Notify Final Summary
         env:
@@ -174,31 +222,23 @@ jobs:
         run: |
           ./notify.sh "${{ secrets.DISCORD_WEBHOOK }}" "${{ env.DOMAIN }}" "summary" \
             "${{ env.SUBDOMAINS_COUNT }}" \
-            "${{ env.PORTS_COUNT }}" \
-            "${{ env.LIVE_SERVICES_COUNT }}" \
-            "${{ env.SCREENSHOTS_COUNT }}" \
-            "${{ env.WAYBACK_COUNT }}" \
+            "${{ env.TOTAL_IPS }}" \
+            "${{ env.POTENTIAL_ORIGIN_COUNT }}" \
+            "${{ env.CDN_WAF_IPS_COUNT }}" \
             "${{ env.GITHUB_RUN_URL }}"
 
-      - name: Upload Recon Report as Artifact
+      - name: Upload Full Report as Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: recon-report-${{ env.DOMAIN }}-${{ github.run_number }}
+          name: ip-hunt-report-${{ env.DOMAIN }}-${{ github.run_number }}
           path: |
-            subdomains.txt
-            ports.txt
-            live-services.txt
-            wayback-urls.txt
-          retention-days: 30
-
-      - name: Upload Screenshots as Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: screenshots-${{ env.DOMAIN }}-${{ github.run_number }}
-          path: screenshots/
-          retention-days: 30
+            real_ip_report.txt
+            all_subdomains.txt
+            live_hosts.txt
+            potential_origin_ips.txt
+          retention-days: 15
 
       - name: Cleanup
         if: always()
         run: |
-          rm -rf notify.sh subdomains.txt ports.txt live-services.txt wayback-urls.txt screenshots/
+          rm -rf notify.sh *.txt favicons/
