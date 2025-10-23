@@ -60,13 +60,13 @@ jobs:
           echo "Installing waybackurls from tomnomnom..."
           go install github.com/tomnomnom/waybackurls@latest
           
-          # Install gowitness
+          # Install gowitness (THE FIX IS ON THE NEXT LINE)
           echo "Fetching latest gowitness version..."
           GOWITNESS_VERSION=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/sensepost/gowitness/releases/latest | jq -r '.tag_name')
           echo "Installing gowitness version: $GOWITNESS_VERSION"
-          curl -sL "https://github.com/sensepost/gowitness/releases/download/${GOWITNESS_VERSION}/gowitness-${GOWITNESS_VERSION#v}-linux-amd64.tar.gz" -o gowitness.tar.gz
+          curl -sL "https://github.com/sensepost/gowitness/releases/download/${GOWITNESS_VERSION}/gowitness_${GOWITNESS_VERSION#v}_linux_amd64.tar.gz" -o gowitness.tar.gz
           tar -xzf gowitness.tar.gz
-          sudo mv gowitness-${GOWITNESS_VERSION#v}-linux-amd64/gowitness /usr/local/bin/
+          sudo mv gowitness_${GOWITNESS_VERSION#v}_linux_amd64/gowitness /usr/local/bin/
           sudo chmod +x /usr/local/bin/gowitness
           
           # Add Go's bin path to the PATH
