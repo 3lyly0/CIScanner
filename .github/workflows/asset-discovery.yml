@@ -61,7 +61,7 @@ jobs:
           
           # Install gowitness (fixed - direct binary)
           echo "Installing aquatone (direct binary)..."
-          apt-get install -y chromium-browser unzip
+          sudo apt-get install -y chromium-browser unzip
           curl -L -o aquatone.zip https://github.com/michenriksen/aquatone/releases/download/v1.7.0/aquatone_linux_amd64_1.7.0.zip
           unzip aquatone.zip
           chmod +x aquatone
