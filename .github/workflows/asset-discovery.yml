@@ -48,23 +48,21 @@ jobs:
           echo "/root/.pdtm/go/bin" >> $GITHUB_PATH
           echo "/usr/local/bin" >> $GITHUB_PATH
 
-      # --- NEW ROBUST INSTALLATION METHOD ---
-      - name: Install Other Tools (Manual Binary Download)
+      # --- NEW SIMPLER AND ROBUST INSTALLATION METHOD ---
+      - name: Install Other Tools (Direct Latest Download)
         run: |
-          # Install waybackurls
-          WAYBACKURLS_VERSION=$(curl -s https://api.github.com/repos/projectdiscovery/waybackurls/releases/latest | jq -r '.tag_name')
-          echo "Installing waybackurls version: $WAYBACKURLS_VERSION"
-          curl -sL "https://github.com/projectdiscovery/waybackurls/releases/download/${WAYBACKURLS_VERSION}/waybackurls_${WAYBACKURLS_VERSION#v}_linux_amd64.zip" -o waybackurls.zip
+          # Install waybackurls by downloading the latest release directly
+          echo "Installing waybackurls..."
+          curl -sL "https://github.com/projectdiscovery/waybackurls/releases/latest/download/waybackurls_linux_amd64.zip" -o waybackurls.zip
           unzip -o waybackurls.zip
           sudo mv waybackurls /usr/local/bin/
           sudo chmod +x /usr/local/bin/waybackurls
 
-          # Install gowitness
-          GOWITNESS_VERSION=$(curl -s https://api.github.com/repos/sensepost/gowitness/releases/latest | jq -r '.tag_name')
-          echo "Installing gowitness version: $GOWITNESS_VERSION"
-          curl -sL "https://github.com/sensepost/gowitness/releases/download/${GOWITNESS_VERSION}/gowitness-${GOWITNESS_VERSION#v}-linux-amd64.tar.gz" -o gowitness.tar.gz
+          # Install gowitness by downloading the latest release directly
+          echo "Installing gowitness..."
+          curl -sL "https://github.com/sensepost/gowitness/releases/latest/download/gowitness-linux-amd64.tar.gz" -o gowitness.tar.gz
           tar -xzf gowitness.tar.gz
-          sudo mv gowitness-${GOWITNESS_VERSION#v}-linux-amd64/gowitness /usr/local/bin/
+          sudo mv gowitness-linux-amd64/gowitness /usr/local/bin/
           sudo chmod +x /usr/local/bin/gowitness
 
       - name: Set Domain
