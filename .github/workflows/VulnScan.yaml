@@ -43,13 +43,16 @@ jobs:
             echo "DOMAIN=${{ github.event.inputs.domain }}" >> $GITHUB_ENV
           else
             echo "DOMAIN=example.com" >> $GITHUB_ENV
-          fi
 
       - name: Notify Start
         run: |
-          curl -X POST -H "Content-Type: application/json" -d '{
-            "content": "🔍 **Scan Started**\n**Domain:** ${{ env.DOMAIN }}\n**Trigger:** ${{ github.event_name }}\n**Tools:** Subfinder + Nuclei"
-          }' "${{ env.DISCORD_WEBHOOK }}"
+          MESSAGE="🔍 **Scan Started**
+**Domain:** ${{ env.DOMAIN }}
+**Trigger:** ${{ github.event_name }}
+**Tools:** Subfinder + Nuclei"
+          curl -X POST -H "Content-Type: application/json" \
+            -d "{\"content\": $(echo "$MESSAGE" | jq -Rs .)}" \
+            "${{ env.DISCORD_WEBHOOK }}"
 
       - name: Run Subfinder
         run: |
@@ -58,19 +61,27 @@ jobs:
 
       - name: Notify Subfinder Results
         run: |
-          # Read subdomains content
           SUBDOMAINS_CONTENT=$(cat subdomains.txt)
-          
-          # Create message
-          MESSAGE="✅ **Subfinder Complete**\n**Domain:** ${{ env.DOMAIN }}\n**Subdomains Found:** ${{ env.SUBDOMAINS_FOUND }}\n\n\`\`\`\n$SUBDOMAINS_CONTENT\n\`\`\`"
-          
+          MESSAGE="✅ **Subfinder Complete**
+**Domain:** ${{ env.DOMAIN }}
+**Subdomains Found:** ${{ env.SUBDOMAINS_FOUND }}
+
+\`\`\`
+$SUBDOMAINS_CONTENT
+\`\`\`"
+
           # Truncate if too long
           if [ ${#MESSAGE} -gt 1900 ]; then
             TRUNCATED=$(echo "$SUBDOMAINS_CONTENT" | head -c 1800)
-            MESSAGE="✅ **Subfinder Complete**\n**Domain:** ${{ env.DOMAIN }}\n**Subdomains Found:** ${{ env.SUBDOMAINS_FOUND }}\n\n\`\`\`\n$TRUNCATED... [truncated]\n\`\`\`"
+            MESSAGE="✅ **Subfinder Complete**
+**Domain:** ${{ env.DOMAIN }}
+**Subdomains Found:** ${{ env.SUBDOMAINS_FOUND }}
+
+\`\`\`
+$TRUNCATED... [truncated]
+\`\`\`"
           fi
-          
-          # Send to Discord
+
           curl -X POST -H "Content-Type: application/json" \
             -d "{\"content\": $(echo "$MESSAGE" | jq -Rs .)}" \
             "${{ env.DISCORD_WEBHOOK }}"
@@ -83,29 +94,32 @@ jobs:
       - name: Notify Nuclei Summary
         run: |
           if [ ${{ env.VULNS_FOUND }} -gt 0 ]; then
-            curl -X POST -H "Content-Type: application/json" -d '{
-              "content": "🚨 **Vulnerabilities Found!**\n**Domain:** ${{ env.DOMAIN }}\n**Count:** ${{ env.VULNS_FOUND }}\n\nSending each vulnerability as a separate message..."
-            }' "${{ env.DISCORD_WEBHOOK }}"
+            MESSAGE="🚨 **Vulnerabilities Found!**
+**Domain:** ${{ env.DOMAIN }}
+**Count:** ${{ env.VULNS_FOUND }}
+Sending each vulnerability as a separate message..."
           else
-            curl -X POST -H "Content-Type: application/json" -d '{
-              "content": "✅ **Nuclei Complete**\n**Domain:** ${{ env.DOMAIN }}\nNo critical/high/medium vulnerabilities found"
-            }' "${{ env.DISCORD_WEBHOOK }}"
+            MESSAGE="✅ **Nuclei Complete**
+**Domain:** ${{ env.DOMAIN }}
+No critical/high/medium vulnerabilities found"
           fi
+          curl -X POST -H "Content-Type: application/json" \
+            -d "{\"content\": $(echo "$MESSAGE" | jq -Rs .)}" \
+            "${{ env.DISCORD_WEBHOOK }}"
 
       - name: Send Individual Vulnerabilities
         if: env.VULNS_FOUND > 0
         run: |
-          # Read each line and send as separate message
           while IFS= read -r vuln; do
-            # Create message for this vulnerability
-            MESSAGE="🚨 **Vulnerability Found**\n**Domain:** ${{ env.DOMAIN }}\n\`\`\`\n$vuln\n\`\`\`"
-            
-            # Send to Discord
+            MESSAGE="🚨 **Vulnerability Found**
+**Domain:** ${{ env.DOMAIN }}
+
+\`\`\`
+$vuln
+\`\`\`"
             curl -X POST -H "Content-Type: application/json" \
               -d "{\"content\": $(echo "$MESSAGE" | jq -Rs .)}" \
               "${{ env.DISCORD_WEBHOOK }}"
-              
-            # Small delay to avoid rate limiting
             sleep 1
           done < nuclei-results.txt
 
