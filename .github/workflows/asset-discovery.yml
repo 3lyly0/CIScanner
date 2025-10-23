@@ -22,7 +22,7 @@ jobs:
         run: |
           # Update package list and install system-level dependencies
           sudo apt-get update
-          sudo apt-get install -y chromium-browser jq libpcap-dev unzip
+          sudo apt-get install -y chromium-browser jq libpcap-dev unzip curl
 
       # --- FINAL FIX: CORRECT PATH AND MANUAL WAYBACKURLS INSTALL ---
       - name: Install ProjectDiscovery Tools (Manual Method)
@@ -43,25 +43,29 @@ jobs:
           sudo pdtm -install subfinder
           sudo pdtm -install naabu
           sudo pdtm -install httpx
-          # waybackurls is not in pdtm list, will install it manually next
           
           # --- CRITICAL FIX: ADD THE CORRECT PATH FOR PDTM TOOLS ---
           echo "/root/.pdtm/go/bin" >> $GITHUB_PATH
           echo "/usr/local/bin" >> $GITHUB_PATH
 
-      - name: Install Other Tools
+      # --- NEW ROBUST INSTALLATION METHOD ---
+      - name: Install Other Tools (Manual Binary Download)
         run: |
-          # Install Go for tools that need it
-          sudo apt-get install -y golang-go
-          
-          # Install waybackurls manually since pdtm failed
-          go install -v github.com/projectdiscovery/waybackurls/cmd/waybackurls@latest
-          
+          # Install waybackurls
+          WAYBACKURLS_VERSION=$(curl -s https://api.github.com/repos/projectdiscovery/waybackurls/releases/latest | jq -r '.tag_name')
+          echo "Installing waybackurls version: $WAYBACKURLS_VERSION"
+          curl -sL "https://github.com/projectdiscovery/waybackurls/releases/download/${WAYBACKURLS_VERSION}/waybackurls_${WAYBACKURLS_VERSION#v}_linux_amd64.zip" -o waybackurls.zip
+          unzip -o waybackurls.zip
+          sudo mv waybackurls /usr/local/bin/
+          sudo chmod +x /usr/local/bin/waybackurls
+
           # Install gowitness
-          go install github.com/sensepost/gowitness@latest
-          
-          # Add Go's bin path to the PATH
-          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+          GOWITNESS_VERSION=$(curl -s https://api.github.com/repos/sensepost/gowitness/releases/latest | jq -r '.tag_name')
+          echo "Installing gowitness version: $GOWITNESS_VERSION"
+          curl -sL "https://github.com/sensepost/gowitness/releases/download/${GOWITNESS_VERSION}/gowitness-${GOWITNESS_VERSION#v}-linux-amd64.tar.gz" -o gowitness.tar.gz
+          tar -xzf gowitness.tar.gz
+          sudo mv gowitness-${GOWITNESS_VERSION#v}-linux-amd64/gowitness /usr/local/bin/
+          sudo chmod +x /usr/local/bin/gowitness
 
       - name: Set Domain
         id: set_domain
