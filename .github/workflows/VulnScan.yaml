@@ -46,15 +46,11 @@ jobs:
 
       - name: Notify Start
         run: |
-          MESSAGE="🔍 **Scan Started**" \
-                  "**Domain:** ${{ env.DOMAIN }}" \
-                  "**Trigger:** ${{ github.event_name }}" \
-                  "**Tools:** Subfinder + Nuclei"
+          MESSAGE="🔍 **Scan Started**\n**Domain:** ${{ env.DOMAIN }}\n**Trigger:** ${{ github.event_name }}\n**Tools:** Subfinder + Nuclei"
       
           curl -X POST -H "Content-Type: application/json" \
-            -d "{\"content\": $(echo \"$MESSAGE\" | jq -Rs .)}" \
+            -d "{\"content\": $(echo "$MESSAGE" | jq -Rs .)}" \
             "${{ env.DISCORD_WEBHOOK }}"
-
 
       - name: Run Subfinder
         run: |
@@ -64,24 +60,12 @@ jobs:
       - name: Notify Subfinder Results
         run: |
           SUBDOMAINS_CONTENT=$(cat subdomains.txt)
-          MESSAGE="✅ **Subfinder Complete**
-**Domain:** ${{ env.DOMAIN }}
-**Subdomains Found:** ${{ env.SUBDOMAINS_FOUND }}
-
-\`\`\`
-$SUBDOMAINS_CONTENT
-\`\`\`"
+          MESSAGE="✅ **Subfinder Complete**\n**Domain:** ${{ env.DOMAIN }}\n**Subdomains Found:** ${{ env.SUBDOMAINS_FOUND }}\n\`\`\`\n$SUBDOMAINS_CONTENT\n\`\`\`"
 
           # Truncate if too long
           if [ ${#MESSAGE} -gt 1900 ]; then
             TRUNCATED=$(echo "$SUBDOMAINS_CONTENT" | head -c 1800)
-            MESSAGE="✅ **Subfinder Complete**
-**Domain:** ${{ env.DOMAIN }}
-**Subdomains Found:** ${{ env.SUBDOMAINS_FOUND }}
-
-\`\`\`
-$TRUNCATED... [truncated]
-\`\`\`"
+            MESSAGE="✅ **Subfinder Complete**\n**Domain:** ${{ env.DOMAIN }}\n**Subdomains Found:** ${{ env.SUBDOMAINS_FOUND }}\n\n\`\`\`\n$TRUNCATED... [truncated]\n\`\`\`"
           fi
 
           curl -X POST -H "Content-Type: application/json" \
@@ -96,14 +80,9 @@ $TRUNCATED... [truncated]
       - name: Notify Nuclei Summary
         run: |
           if [ ${{ env.VULNS_FOUND }} -gt 0 ]; then
-            MESSAGE="🚨 **Vulnerabilities Found!**
-**Domain:** ${{ env.DOMAIN }}
-**Count:** ${{ env.VULNS_FOUND }}
-Sending each vulnerability as a separate message..."
+            MESSAGE="🚨 **Vulnerabilities Found!**\n**Domain:** ${{ env.DOMAIN }}\n**Count:** ${{ env.VULNS_FOUND }}\nSending each vulnerability as a separate message..."
           else
-            MESSAGE="✅ **Nuclei Complete**
-**Domain:** ${{ env.DOMAIN }}
-No critical/high/medium vulnerabilities found"
+            MESSAGE="✅ **Nuclei Complete**\n**Domain:** ${{ env.DOMAIN }}\nNo critical/high/medium vulnerabilities found"
           fi
           curl -X POST -H "Content-Type: application/json" \
             -d "{\"content\": $(echo "$MESSAGE" | jq -Rs .)}" \
@@ -113,12 +92,7 @@ No critical/high/medium vulnerabilities found"
         if: env.VULNS_FOUND > 0
         run: |
           while IFS= read -r vuln; do
-            MESSAGE="🚨 **Vulnerability Found**
-**Domain:** ${{ env.DOMAIN }}
-
-\`\`\`
-$vuln
-\`\`\`"
+            MESSAGE="🚨 **Vulnerability Found**\n**Domain:** ${{ env.DOMAIN }}\n\n\`\`\`\n$vuln\n\`\`\`"
             curl -X POST -H "Content-Type: application/json" \
               -d "{\"content\": $(echo "$MESSAGE" | jq -Rs .)}" \
               "${{ env.DISCORD_WEBHOOK }}"
