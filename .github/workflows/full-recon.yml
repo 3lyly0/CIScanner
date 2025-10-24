@@ -11,22 +11,283 @@ on:
 jobs:
   Recon:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 120
     env:
       DOMAIN: ${{ github.event.inputs.domain }}
     steps:
+      - uses: actions/checkout@v4
+
       - name: Install tools
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends nmap python3-pip
-          pip3 install wfuzz
-      - name: Run nmap
+          apt-get install -y --no-install-recommends nmap dnsutils curl jq python3-pip golang-go git
+          pip3 install --no-cache-dir wfuzz
+          export GOPATH=/github/home/go
+          mkdir -p $GOPATH/bin
+          export PATH=$GOPATH/bin:$PATH
+          go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest || true
+          go install -v github.com/OWASP/Amass/v3/...@master || true
+
+      - name: Resolve domain and exclude Cloudflare
         run: |
-          nmap --version
+          DOMAIN="$DOMAIN"
           mkdir -p results
-          nmap -T4 -p- --min-rate 1000 --max-retries 1 -A -v "$DOMAIN" -oA results/"$DOMAIN" || true
-      - name: Upload results
+          dig +short A $DOMAIN | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}' > /tmp/domain_ips.txt || true
+          dig +short AAAA $DOMAIN | grep -Eo '([0-9a-fA-F:]+)' >> /tmp/domain_ips.txt || true
+          sort -u /tmp/domain_ips.txt -o /tmp/domain_ips.txt || true
+          curl -s https://www.cloudflare.com/ips-v4 -o /tmp/cf4.txt || true
+          curl -s https://www.cloudflare.com/ips-v6 -o /tmp/cf6.txt || true
+          python3 - <<'PY'
+            import ipaddress
+            ips=[l.strip() for l in open('/tmp/domain_ips.txt') if l.strip()]
+            cf=[l.strip() for l in open('/tmp/cf4.txt') if l.strip()]+[l.strip() for l in open('/tmp/cf6.txt') if l.strip()]
+            cfnets=[ipaddress.ip_network(c) for c in cf]
+            out=[]
+            for ip in ips:
+                try:
+                    aip=ipaddress.ip_address(ip)
+                    if any(aip in n for n in cfnets):
+                        continue
+                    out.append(ip)
+                except:
+                    continue
+            open('/tmp/initial_noncf_ips.txt','w').write("\\n".join(sorted(set(out))))
+            PY
+          sort -u /tmp/initial_noncf_ips.txt -o /tmp/initial_noncf_ips.txt || true
+          cat /tmp/initial_noncf_ips.txt || true
+
+      - name: Run initial nmap (-p- -sV)
+        run: |
+          mkdir -p results/initial
+          ips=$(cat /tmp/initial_noncf_ips.txt || true)
+          if [ -z "$ips" ]; then
+            echo "NO_IPS" > results/initial/no_ips.txt
+          else
+            for ip in $ips; do
+              nmap -T4 -p- -sV -oX results/initial/nmap_${ip}.xml $ip || true
+            done
+          fi
+
+      - name: Parse initial nmap to ip:port and web candidates
+        run: |
+          mkdir -p parsed
+          python3 - <<'PY'
+            import xml.etree.ElementTree as ET,glob
+            ports=set()
+            web=set()
+            for fn in glob.glob('results/initial/nmap_*.xml'):
+                tree=ET.parse(fn)
+                for host in tree.findall('host'):
+                    addr=None
+                    for a in host.findall('address'):
+                        if a.get('addrtype') in ('ipv4','ipv6'):
+                            addr=a.get('addr')
+                    if not addr:
+                        continue
+                    for ports_node in host.findall('ports'):
+                        for port in ports_node.findall('port'):
+                            st=port.find('state')
+                            if st is None or st.get('state')!='open':
+                                continue
+                            pnum=int(port.get('portid'))
+                            svc_name=''
+                            svc=port.find('service')
+                            if svc is not None:
+                                svc_name=svc.get('name') or ''
+                            ports.add(f"{addr}:{pnum}")
+                            lname=svc_name.lower()
+                            if ('http' in lname) or ('ssl' in lname) or ('https' in lname):
+                                web.add(f"{addr}:{pnum}")
+            open('parsed/initial_ip_ports.txt','w').write("\\n".join(sorted(ports)))
+            open('parsed/initial_web_candidates.txt','w').write("\\n".join(sorted(web)))
+            PY
+          cat parsed/initial_ip_ports.txt || true
+          cat parsed/initial_web_candidates.txt || true
+
+      - name: Upload initial results
         uses: actions/upload-artifact@v4
         with:
-          name: nmap-results-${{ env.DOMAIN }}
-          path: results
+          name: initial-nmap-${{ env.DOMAIN }}
+          path: |
+            results/initial
+            parsed/initial_ip_ports.txt
+            parsed/initial_web_candidates.txt
+
+  Subs:
+    needs: Recon
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      DOMAIN: ${{ github.event.inputs.domain }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download initial artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: initial-nmap-${{ env.DOMAIN }}
+          path: initial_artifact
+
+      - name: Install tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends nmap dnsutils curl jq python3-pip golang-go git
+          pip3 install --no-cache-dir wfuzz
+          export GOPATH=/github/home/go
+          mkdir -p $GOPATH/bin
+          export PATH=$GOPATH/bin:$PATH
+          go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest || true
+          go install -v github.com/OWASP/Amass/v3/...@master || true
+
+      - name: Run subfinder + amass passive, merge, resolve and exclude Cloudflare
+        run: |
+          export GOPATH=/github/home/go
+          export PATH=$GOPATH/bin:$PATH
+          mkdir -p subs
+          /github/home/go/bin/subfinder -d "$DOMAIN" -silent -o subs/subfinder.txt || true
+          /github/home/go/bin/amass enum -passive -d "$DOMAIN" -o subs/amass.txt || true
+          sort -u subs/subfinder.txt subs/amass.txt -o subs/merged_subs.txt || true
+          > /tmp/sub_ips_all.txt
+          while read -r s; do
+            dig +short A "$s" | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}' >> /tmp/sub_ips_all.txt || true
+            dig +short AAAA "$s" | grep -Eo '([0-9a-fA-F:]+)' >> /tmp/sub_ips_all.txt || true
+          done < subs/merged_subs.txt || true
+          sort -u /tmp/sub_ips_all.txt -o /tmp/sub_ips_all.txt || true
+          curl -s https://www.cloudflare.com/ips-v4 -o /tmp/cf4.txt || true
+          curl -s https://www.cloudflare.com/ips-v6 -o /tmp/cf6.txt || true
+          python3 - <<'PY'
+            import ipaddress
+            ips=[l.strip() for l in open('/tmp/sub_ips_all.txt') if l.strip()]
+            cf=[l.strip() for l in open('/tmp/cf4.txt') if l.strip()]+[l.strip() for l in open('/tmp/cf6.txt') if l.strip()]
+            cfnets=[ipaddress.ip_network(c) for c in cf]
+            out=[]
+            for ip in ips:
+                try:
+                    aip=ipaddress.ip_address(ip)
+                    if any(aip in n for n in cfnets):
+                        continue
+                    out.append(ip)
+                except:
+                    continue
+            open('/tmp/sub_noncf_ips.txt','w').write("\\n".join(sorted(set(out))))
+            PY
+          sort -u /tmp/sub_noncf_ips.txt -o /tmp/sub_noncf_ips.txt || true
+          cat /tmp/sub_noncf_ips.txt || true
+          cp subs/merged_subs.txt subs/final_subs.txt || true
+
+      - name: Nmap on subfinder IPs (-p- -sV)
+        run: |
+          mkdir -p results/subs
+          ips=$(cat /tmp/sub_noncf_ips.txt || true)
+          if [ -z "$ips" ]; then
+            echo "NO_SUB_IPS" > results/subs/no_sub_ips.txt
+          else
+            for ip in $ips; do
+              nmap -T4 -p- -sV -oX results/subs/nmap_${ip}.xml $ip || true
+            done
+          fi
+
+      - name: Parse sub nmap then merge with initial
+        run: |
+          mkdir -p parsed_sub
+          python3 - <<'PY'
+            import xml.etree.ElementTree as ET,glob
+            all_ports=set()
+            web=set()
+            for fn in glob.glob('results/subs/nmap_*.xml'):
+                tree=ET.parse(fn)
+                for host in tree.findall('host'):
+                    addr=None
+                    for a in host.findall('address'):
+                        if a.get('addrtype') in ('ipv4','ipv6'):
+                            addr=a.get('addr')
+                    if not addr:
+                        continue
+                    for ports_node in host.findall('ports'):
+                        for port in ports_node.findall('port'):
+                            st=port.find('state')
+                            if st is None or st.get('state')!='open':
+                                continue
+                            pnum=int(port.get('portid'))
+                            svc_name=''
+                            svc=port.find('service')
+                            if svc is not None:
+                                svc_name=svc.get('name') or ''
+                            all_ports.add(f"{addr}:{pnum}")
+                            lname=svc_name.lower()
+                            if ('http' in lname) or ('ssl' in lname) or ('https' in lname):
+                                web.add(f"{addr}:{pnum}")
+            open('parsed_sub/sub_ip_ports.txt','w').write("\\n".join(sorted(all_ports)))
+            open('parsed_sub/sub_web_candidates.txt','w').write("\\n".join(sorted(web)))
+            PY
+          if [ -f initial_artifact/parsed/initial_ip_ports.txt ]; then
+            cat initial_artifact/parsed/initial_ip_ports.txt >> parsed_sub/sub_ip_ports.txt || true
+            cat initial_artifact/parsed/initial_web_candidates.txt >> parsed_sub/sub_web_candidates.txt || true
+          fi
+          sort -u parsed_sub/sub_ip_ports.txt -o parsed_sub/all_ip_ports.txt || true
+          sort -u parsed_sub/sub_web_candidates.txt -o parsed_sub/all_web_candidates.txt || true
+          cat parsed_sub/all_ip_ports.txt || true
+          cat parsed_sub/all_web_candidates.txt || true
+
+      - name: Prepare megabest wordlist
+        run: |
+          git clone --depth 1 https://github.com/danielmiessler/SecLists.git /tmp/SecLists || true
+          mkdir -p wordlists
+          cat /tmp/SecLists/Discovery/Web-Content/directory-list-2.3-medium.txt /tmp/SecLists/Discovery/Web-Content/directory-list-2.3-small.txt 2>/dev/null | sort -u > wordlists/megabest.txt
+          wc -l wordlists/megabest.txt || true
+
+      - name: Run wfuzz against detected web services (parallel)
+        run: |
+          mkdir -p wfuzz_results
+          if [ -f parsed_sub/all_web_candidates.txt ]; then
+            cp parsed_sub/all_web_candidates.txt /tmp/web_targets.txt
+          else
+            touch /tmp/web_targets.txt
+          fi
+          while read -r line; do
+            ip=$(echo "$line" | cut -d: -f1)
+            port=$(echo "$line" | cut -d: -f2)
+            if [ -z "$ip" ] || [ -z "$port" ]; then
+              continue
+            fi
+            proto="http"
+            svcname=$(grep -m1 "^$ip:$port" -n parsed_sub/sub_web_candidates.txt 2>/dev/null || true)
+            if [ "$port" = "443" ] || [ "$port" = "8443" ]; then
+              proto="https"
+            fi
+            url="${proto}://${ip}:${port}/FUZZ"
+            outf="wfuzz_results/${ip}_${port}.txt"
+            nohup sh -c "wfuzz -w wordlists/megabest.txt -t 25 --hc 404 -u '$url' --sc 200,301,302 > '$outf' 2>&1" &
+          done < /tmp/web_targets.txt
+          sleep 3
+          jobs -p | xargs -r -n1 wait || true
+
+      - name: Build final report
+        run: |
+          mkdir -p final_report
+          echo "# Full Recon Report for $DOMAIN" > final_report/report.md
+          echo "## Aggregated IP:Port list" >> final_report/report.md
+          cat parsed_sub/all_ip_ports.txt >> final_report/report.md || true
+          echo "## Detected Web Targets (from nmap)" >> final_report/report.md
+          cat parsed_sub/all_web_candidates.txt >> final_report/report.md || true
+          echo "## Wfuzz Results (samples)" >> final_report/report.md
+          for f in wfuzz_results/*; do
+            if [ -f "$f" ]; then
+              echo "### $(basename $f)" >> final_report/report.md
+              echo '```' >> final_report/report.md
+              head -n 200 "$f" >> final_report/report.md
+              echo '```' >> final_report/report.md
+            fi
+          done
+          tar -czf final_report.tar.gz final_report || true
+
+      - name: Upload final artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-recon-report-${{ env.DOMAIN }}
+          path: |
+            parsed_sub/all_ip_ports.txt
+            parsed_sub/all_web_candidates.txt
+            subs/final_subs.txt
+            wfuzz_results
+            final_report.tar.gz
