@@ -11,7 +11,7 @@ on:
     # - cron: '0 7 * * 0'
 
 jobs:
-  recon:
+  Recon:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -65,19 +65,38 @@ jobs:
       - name: 1️. Subdomain Enumeration
         run: |
           echo "🔍 Enumerating subdomains for ${{ env.DOMAIN }}..."
-          subfinder -d ${{ env.DOMAIN }} -silent -o subdomains.txt || echo "Failed to enumerate subdomains"
+          subfinder -d ${{ env.DOMAIN }} -silent -o subdomains.txt || {
+            echo "Failed to enumerate subdomains"
+            touch subdomains.txt
+          }
           echo "SUBDOMAINS_COUNT=$(wc -l < subdomains.txt 2>/dev/null || echo 0)" >> $GITHUB_ENV
 
       - name: 2️. Port Scanning
         run: |
           echo "🚀 Scanning ports on discovered subdomains..."
-          naabu -list subdomains.txt -silent -top-ports 1000 -o ports.txt || echo "Failed to scan ports"
+          if [ -s subdomains.txt ]; then
+            naabu -list subdomains.txt -silent -top-ports 1000 -o ports.txt || {
+              echo "Failed to scan ports"
+              touch ports.txt
+            }
+          else
+            echo "No subdomains found for port scanning"
+            touch ports.txt
+          fi
           echo "PORTS_COUNT=$(wc -l < ports.txt 2>/dev/null || echo 0)" >> $GITHUB_ENV
 
       - name: 3️. Probing & Technology Identification
         run: |
           echo "🌐 Probing for live web services and identifying technologies..."
-          cat ports.txt 2>/dev/null | httpx -silent -title -tech-detect -status-code -o live-services.txt || echo "Failed to probe services"
+          if [ -s ports.txt ]; then
+            cat ports.txt 2>/dev/null | httpx -silent -title -tech-detect -status-code -o live-services.txt || {
+              echo "Failed to probe services"
+              touch live-services.txt
+            }
+          else
+            echo "No ports found for probing"
+            touch live-services.txt
+          fi
           echo "LIVE_SERVICES_COUNT=$(wc -l < live-services.txt 2>/dev/null || echo 0)" >> $GITHUB_ENV
 
       - name: 4️. Screenshotting Live Services
@@ -97,7 +116,10 @@ jobs:
       - name: 5. Wayback URL Gathering
         run: |
           echo "🕰️ Gathering URLs from Wayback Machine..."
-          waybackurls ${{ env.DOMAIN }} | sort -u > wayback-urls.txt || echo "Failed to gather Wayback URLs"
+          waybackurls ${{ env.DOMAIN }} | sort -u > wayback-urls.txt || {
+            echo "Failed to gather Wayback URLs"
+            touch wayback-urls.txt
+          }
           echo "WAYBACK_COUNT=$(wc -l < wayback-urls.txt 2>/dev/null || echo 0)" >> $GITHUB_ENV
 
       # =============================================
