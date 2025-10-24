@@ -13,6 +13,8 @@ on:
 jobs:
   Recon:
     runs-on: ubuntu-latest
+    env:
+      DOMAIN: ${{ github.event.inputs.domain }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
