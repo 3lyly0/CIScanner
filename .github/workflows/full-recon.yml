@@ -19,8 +19,8 @@ jobs:
 
       - name: Install tools
         run: |
-          apt-get update
-          apt-get install -y --no-install-recommends nmap dnsutils curl jq python3-pip golang-go git
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends nmap dnsutils curl jq python3-pip golang-go git
           pip3 install --no-cache-dir wfuzz
           export GOPATH=/github/home/go
           mkdir -p $GOPATH/bin
@@ -130,8 +130,8 @@ jobs:
 
       - name: Install tools
         run: |
-          apt-get update
-          apt-get install -y --no-install-recommends nmap dnsutils curl jq python3-pip golang-go git
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends nmap dnsutils curl jq python3-pip golang-go git
           pip3 install --no-cache-dir wfuzz
           export GOPATH=/github/home/go
           mkdir -p $GOPATH/bin
