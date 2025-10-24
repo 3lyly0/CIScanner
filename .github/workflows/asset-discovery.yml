@@ -107,22 +107,23 @@ jobs:
           if [ -s live-services.txt ]; then
             mkdir -p screenshots
             cat live-services.txt | awk '{print $1}' | while read url; do
-              filename=$(echo "$url" | sed 's|https://||;s|http://||;s|/|_|g')
+            filename=$(echo "$url" | sed 's|https://||;s|http://||;s|[^a-zA-Z0-9._-]|_|g')
 
-              cat <<EOF > screenshot.js
-                  const puppeteer = require("puppeteer");
-                  (async () => {
-                    try {
-                      const browser = await puppeteer.launch({ args: ["--no-sandbox", "--disable-setuid-sandbox"] });
-                      const page = await browser.newPage();
-                      await page.goto("${url}", { waitUntil: "networkidle2", timeout: 30000 });
-                      await page.screenshot({ path: "./screenshots/${filename}.png", fullPage: true });
-                      await browser.close();
-                    } catch (error) {
-                      console.error("Error taking screenshot for ${url}:", error);
-                    }
-                  })();
-              EOF
+
+          cat <<EOF > screenshot.js
+          const puppeteer = require("puppeteer");
+          (async () => {
+            try {
+              const browser = await puppeteer.launch({ args: ["--no-sandbox", "--disable-setuid-sandbox"] });
+              const page = await browser.newPage();
+              await page.goto("${url}", { waitUntil: "networkidle2", timeout: 30000 });
+              await page.screenshot({ path: "./screenshots/${filename}.png", fullPage: true });
+              await browser.close();
+            } catch (error) {
+              console.error("Error taking screenshot for ${url}:", error);
+            }
+          })();
+          EOF
 
               node screenshot.js
             done
@@ -132,6 +133,7 @@ jobs:
 
           echo "SCREENSHOTS_COUNT=$(find screenshots -name '*.png' | wc -l)" >> $GITHUB_ENV
 
+          
       - name: 5. Wayback URL Gathering
         run: |
           echo "🕰️ Gathering URLs from Wayback Machine..."
