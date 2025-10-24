@@ -203,7 +203,7 @@ jobs:
                     {"name": "🔌 Open Ports", "value": $ports, "inline": false},
                     {"name": "🕰️ Wayback URLs", "value": $wayback, "inline": false},
                     {"name": "📸 Screenshots", "value": $screenshots, "inline": true},
-                    {"name": $artifact, "value": "[Click here to download everything]($artifact_url)", "inline": false}
+                    {"name": $artifact, "value": ("[Click here to download everything](" + $artifact_url + ")"), "inline": false}
                   ],
                   "footer": {"text": $footer}
                 }
