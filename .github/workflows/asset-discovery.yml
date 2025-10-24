@@ -117,7 +117,7 @@ jobs:
             try {
               const browser = await puppeteer.launch({ args: ["--no-sandbox", "--disable-setuid-sandbox"] });
               const page = await browser.newPage();
-              await page.goto("${url}", { waitUntil: "networkidle2", timeout: 30000 });
+              await page.goto("${url}", { waitUntil: "networkidle2", timeout: 5000, ignoreHTTPSErrors: true });
               await page.screenshot({ path: "./screenshots/${filename}.png", fullPage: true });
               await browser.close();
             } catch (error) {
