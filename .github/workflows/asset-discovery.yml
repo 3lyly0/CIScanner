@@ -55,12 +55,9 @@ jobs:
           echo "Installing waybackurls..."
           go install github.com/tomnomnom/waybackurls@latest
 
-          # Install aquatone
-          echo "Installing aquatone..."
-          curl -L -o aquatone.zip https://github.com/michenriksen/aquatone/releases/download/v1.7.0/aquatone_linux_amd64_1.7.0.zip
-          unzip -o aquatone.zip
-          chmod +x aquatone
-          sudo mv aquatone /usr/local/bin/aquatone
+          # Install webscreenshot
+          echo "Installing webscreenshot..."
+          go install github.com/maaaaz/webscreenshot@latest
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
       # =============================================
@@ -106,8 +103,8 @@ jobs:
         run: |
           echo "📸 Taking screenshots of live web services..."
           mkdir -p screenshots
-          # aquatone needs a list of full URLs. Reduced threads for stability.
-          cat live-services.txt | awk '{print $1}' | aquatone -out ./screenshots -threads 2
+          # webscreenshot needs a list of full URLs.
+          cat live-services.txt | awk '{print $1}' | webscreenshot -o ./screenshots
           echo "SCREENSHOTS_COUNT=$(find screenshots -name '*.png' | wc -l)" >> $GITHUB_ENV
 
       - name: 5. Wayback URL Gathering
@@ -120,7 +117,7 @@ jobs:
       # Section 4: Upload and Notify
       # =============================================
 
-      - name: 📦 Upload All Findings as Single Artifact
+      - name: Upload All Findings as Single Artifact
         uses: actions/upload-artifact@v4
         with:
           name: full-recon-report-${{ env.DOMAIN }}-${{ github.run_number }}
@@ -132,7 +129,7 @@ jobs:
             screenshots/
           retention-days: 30
 
-      - name: 📤 Send Everything (Screenshots + Report) to Discord
+      - name: Send Everything (Screenshots + Report) to Discord
         env:
           # Configure how many screenshots to send directly
           MAX_IMAGES_TO_SEND: 10
