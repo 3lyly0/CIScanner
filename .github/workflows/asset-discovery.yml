@@ -104,15 +104,32 @@ jobs:
       - name: 4️. Screenshotting Live Services
         run: |
           echo "📸 Taking screenshots of live web services..."
-          mkdir -p screenshots
           if [ -s live-services.txt ]; then
+            mkdir -p screenshots
             cat live-services.txt | awk '{print $1}' | while read url; do
               filename=$(echo "$url" | sed 's|https://||;s|http://||;s|/|_|g')
-              node -e "\n              const puppeteer = require('puppeteer');\n              (async () => {\n                try {\n                  const browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });\n                  const page = await browser.newPage();\n                  await page.goto('$url', { waitUntil: 'networkidle2', timeout: 30000 });\n                  await page.screenshot({ path: './screenshots/$filename.png', fullPage: true });\n                  await browser.close();\n                } catch (error) {\n                  console.error('Error taking screenshot:', error);\n                }\n              })();\n            "
+
+              cat <<EOF > screenshot.js
+                  const puppeteer = require("puppeteer");
+                  (async () => {
+                    try {
+                      const browser = await puppeteer.launch({ args: ["--no-sandbox", "--disable-setuid-sandbox"] });
+                      const page = await browser.newPage();
+                      await page.goto("${url}", { waitUntil: "networkidle2", timeout: 30000 });
+                      await page.screenshot({ path: "./screenshots/${filename}.png", fullPage: true });
+                      await browser.close();
+                    } catch (error) {
+                      console.error("Error taking screenshot for ${url}:", error);
+                    }
+                  })();
+              EOF
+
+              node screenshot.js
             done
           else
             echo "No live services found to screenshot"
           fi
+
           echo "SCREENSHOTS_COUNT=$(find screenshots -name '*.png' | wc -l)" >> $GITHUB_ENV
 
       - name: 5. Wayback URL Gathering
