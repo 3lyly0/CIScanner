@@ -17,8 +17,8 @@ jobs:
     steps:
       - name: Install tools
         run: |
-          apt-get update
-          apt-get install -y --no-install-recommends nmap python3-pip
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends nmap python3-pip
           pip3 install wfuzz
       - name: Run nmap
         run: |
