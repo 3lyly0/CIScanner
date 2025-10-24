@@ -106,6 +106,7 @@ jobs:
           echo "📸 Taking screenshots of live web services..."
           if [ -s live-services.txt ]; then
             mkdir -p screenshots
+            npm install puppeteer
             cat live-services.txt | awk '{print $1}' | while read url; do
             filename=$(echo "$url" | sed 's|https://||;s|http://||;s|[^a-zA-Z0-9._-]|_|g')
 
