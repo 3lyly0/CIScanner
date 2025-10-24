@@ -9,9 +9,9 @@ on:
         default: 'raneen.com'
 
 jobs:
-  my-job:
+  Recon:
     runs-on: ubuntu-latest
-    container: kalilinux/kali
+    container: kalilinux/kali-rolling
     env:
       DOMAIN: ${{ github.event.inputs.domain }}
     steps:
