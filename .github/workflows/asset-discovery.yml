@@ -190,22 +190,22 @@ jobs:
             --arg artifact "📦 **Download Full Report & All Files**" \
             --arg artifact_url "$ARTIFACT_LINK" \
             --arg footer "Recon completed at $(date -u '+\%Y-\%m-\%d \%H:\%M:\%S UTC')" \
-            '{\
-              "embeds": [\
-                {\
-                  "title": $title,\
-                  "color": 5814783,\
-                  "fields": [\
-                    {"name": "🌐 Subdomains", "value": $subdomains, "inline": false},\
-                    {"name": "🚀 Live Services", "value": $services, "inline": false},\
-                    {"name": "🔌 Open Ports", "value": $ports, "inline": false},\
-                    {"name": "🕰️ Wayback URLs", "value": $wayback, "inline": false},\
-                    {"name": "📸 Screenshots", "value": $screenshots, "inline": true},\
-                    {"name": $artifact, "value": "[Click here to download everything]($artifact_url)", "inline": false}\
-                  ],\
-                  "footer": {"text": $footer}\
-                }\
-              ]\
+            '{
+              "embeds": [ 
+                {
+                  "title": $title,
+                  "color": 5814783,
+                  "fields": [
+                    {"name": "🌐 Subdomains", "value": $subdomains, "inline": false},
+                    {"name": "🚀 Live Services", "value": $services, "inline": false},
+                    {"name": "🔌 Open Ports", "value": $ports, "inline": false},
+                    {"name": "🕰️ Wayback URLs", "value": $wayback, "inline": false},
+                    {"name": "📸 Screenshots", "value": $screenshots, "inline": true},
+                    {"name": $artifact, "value": "[Click here to download everything]($artifact_url)", "inline": false}
+                  ],
+                  "footer": {"text": $footer}
+                }
+              ]
             }')
           send_with_retry "$PAYLOAD"
 
