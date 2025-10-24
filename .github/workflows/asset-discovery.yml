@@ -182,14 +182,14 @@ jobs:
 
           PAYLOAD=$(jq -n \
             --arg title "🔍 Recon Report for $DOMAIN" \
-            --arg subdomains "Found **$6** subdomains. Preview:\n$SUBDOMAINS_PREVIEW" \
-            --arg services "Found **$7** live services. Preview:\n$LIVE_SERVICES_PREVIEW" \
-            --arg ports "Found **$8** open ports. Preview:\n$PORTS_PREVIEW" \
-            --arg wayback "Gathered **$9** URLs from Wayback Machine. Preview:\n$WAYBACK_URLS_PREVIEW" \
-            --arg screenshots "Took **$10** screenshots." \
+            --arg subdomains "Found **$6** subdomains. Preview: $SUBDOMAINS_PREVIEW" \
+            --arg services "Found **$7** live services. Preview: $LIVE_SERVICES_PREVIEW" \
+            --arg ports "Found **$8** open ports. Preview: $PORTS_PREVIEW" \
+            --arg wayback "Gathered **$9** URLs from Wayback Machine. Preview: $WAYBACK_URLS_PREVIEW" \
+            --arg screenshots "Took **${10}** screenshots." \
             --arg artifact "📦 **Download Full Report & All Files**" \
-            --arg artifact_url "$ARTIFACT_LINK" \
-            --arg footer "Recon completed at $(date -u '+\%Y-\%m-\%d \%H:\%M:\%S UTC')" \
+            --arg artifact_url $ARTIFACT_LINK \
+            --arg footer "Recon completed at $(date -u '+%Y-%m-%d %H:%M:%S UTC')" \
             '{
               "embeds": [ 
                 {
