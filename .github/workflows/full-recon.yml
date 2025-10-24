@@ -17,16 +17,16 @@ jobs:
     steps:
       - name: Install tools
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends nmap python3-pip
+          apt-get update
+          apt-get install -y --no-install-recommends nmap python3-pip
           pip3 install wfuzz
       - name: Run nmap
         run: |
           nmap --version
           mkdir -p results
-          nmap -T4 -p- --min-rate 1000 --max-retries 1 -A -v $DOMAIN -oA results/$DOMAIN || true
+          nmap -T4 -p- --min-rate 1000 --max-retries 1 -A -v "$DOMAIN" -oA results/"$DOMAIN" || true
       - name: Upload results
         uses: actions/upload-artifact@v4
         with:
-          name: nmap-results-$DOMAIN
+          name: nmap-results-${{ env.DOMAIN }}
           path: results
