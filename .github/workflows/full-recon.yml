@@ -11,12 +11,22 @@ on:
 jobs:
   Recon:
     runs-on: ubuntu-latest
-    container: booyaabes/kali-linux-full
+    timeout-minutes: 30
     env:
       DOMAIN: ${{ github.event.inputs.domain }}
     steps:
-      - name: Run a command inside Kali container
+      - name: Install tools
         run: |
-          echo "Running inside Kali container"
+          apt-get update
+          apt-get install -y --no-install-recommends nmap python3-pip
+          pip3 install wfuzz
+      - name: Run nmap
+        run: |
           nmap --version
-        #   nmap -T4 -A -v -p- $DOMAIN 
+          mkdir -p results
+          nmap -T4 -p- --min-rate 1000 --max-retries 1 -A -v $DOMAIN -oA results/$DOMAIN || true
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: nmap-results-$DOMAIN
+          path: results
