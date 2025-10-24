@@ -1,0 +1,22 @@
+name: Full Recon & Vulnerability Assessment
+
+on:
+  workflow_dispatch:
+    inputs:
+      domain:
+        description: 'Domain for Full Recon'
+        required: true
+        default: 'raneen.com'
+
+jobs:
+  my-job:
+    runs-on: ubuntu-latest
+    container: kalilinux/kali
+    env:
+      DOMAIN: ${{ github.event.inputs.domain }}
+    steps:
+      - name: Run a command inside Kali container
+        run: |
+          echo "Running inside Kali container"
+          nmap --version
+          nmap -T4 -A -v -p- $DOMAIN 
