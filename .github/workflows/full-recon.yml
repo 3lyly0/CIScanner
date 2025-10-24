@@ -22,7 +22,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends nmap dnsutils curl jq python3-pip golang-go git
           pip3 install --no-cache-dir wfuzz
-          export GOPATH=/github/home/go
+          export GOPATH=~/github/home/go
           mkdir -p $GOPATH/bin
           export PATH=$GOPATH/bin:$PATH
           go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest || true
@@ -133,7 +133,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends nmap dnsutils curl jq python3-pip golang-go git
           pip3 install --no-cache-dir wfuzz
-          export GOPATH=/github/home/go
+          export GOPATH=~/github/home/go
           mkdir -p $GOPATH/bin
           export PATH=$GOPATH/bin:$PATH
           go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest || true
@@ -141,11 +141,11 @@ jobs:
 
       - name: Run subfinder + amass passive, merge, resolve and exclude Cloudflare
         run: |
-          export GOPATH=/github/home/go
+          export GOPATH=~/github/home/go
           export PATH=$GOPATH/bin:$PATH
           mkdir -p subs
-          /github/home/go/bin/subfinder -d "$DOMAIN" -silent -o subs/subfinder.txt || true
-          /github/home/go/bin/amass enum -passive -d "$DOMAIN" -o subs/amass.txt || true
+          ~/github/home/go/bin/subfinder -d "$DOMAIN" -silent -o subs/subfinder.txt || true
+          ~/github/home/go/bin/amass enum -passive -d "$DOMAIN" -o subs/amass.txt || true
           sort -u subs/subfinder.txt subs/amass.txt -o subs/merged_subs.txt || true
           > /tmp/sub_ips_all.txt
           while read -r s; do
