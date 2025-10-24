@@ -19,4 +19,4 @@ jobs:
         run: |
           echo "Running inside Kali container"
           nmap --version
-          nmap -T4 -A -v -p- $DOMAIN 
+        #   nmap -T4 -A -v -p- $DOMAIN 
