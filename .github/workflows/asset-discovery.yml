@@ -126,19 +126,6 @@ jobs:
       # Section 4: Upload and Notify
       # =============================================
 
-      - name: Upload All Findings as Single Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: full-recon-report-${{ env.DOMAIN }}-${{ github.run_number }}
-          path: |
-            subdomains.txt
-            ports.txt
-            live-services.txt
-            wayback-urls.txt
-            screenshots/
-          if-no-files-found: warn
-          retention-days: 30
-
       - name: Send Everything (Screenshots + Report) to Discord
         env:
           # Configure how many screenshots to send directly
@@ -187,6 +174,12 @@ jobs:
           PORTS_PREVIEW=$(head -n 10 "$PORTS_FILE" 2>/dev/null | sed 's/^/- /' | tr '\n' '; ' | sed 's/; $//' || echo "No ports found")
           WAYBACK_URLS_PREVIEW=$(head -n 10 "$WAYBACK_URLS_FILE" 2>/dev/null | sed 's/^/- /' | tr '\n' '; ' | sed 's/; $//' || echo "No Wayback URLs found")
 
+          # Escape special characters for JSON
+          SUBDOMAINS_PREVIEW=$(echo "$SUBDOMAINS_PREVIEW" | sed 's/\\/\\\\/g; s/\//\\\//g; s/&/\\&/g; s/\\n/\\\\n/g')
+          LIVE_SERVICES_PREVIEW=$(echo "$LIVE_SERVICES_PREVIEW" | sed 's/\\/\\\\/g; s/\//\\\//g; s/&/\\&/g; s/\\n/\\\\n/g')
+          PORTS_PREVIEW=$(echo "$PORTS_PREVIEW" | sed 's/\\/\\\\/g; s/\//\\\//g; s/&/\\&/g; s/\\n/\\\\n/g')
+          WAYBACK_URLS_PREVIEW=$(echo "$WAYBACK_URLS_PREVIEW" | sed 's/\\/\\\\/g; s/\//\\\//g; s/&/\\&/g; s/\\n/\\\\n/g')
+
           PAYLOAD=$(jq -n \
             --arg title "🔍 Recon Report for $DOMAIN" \
             --arg subdomains "Found **$6** subdomains. Preview:\n$SUBDOMAINS_PREVIEW" \
@@ -208,7 +201,7 @@ jobs:
                     {"name": "🔌 Open Ports", "value": $ports, "inline": false},\
                     {"name": "🕰️ Wayback URLs", "value": $wayback, "inline": false},\
                     {"name": "📸 Screenshots", "value": $screenshots, "inline": true},\
-                    {"name": $artifact, "value": "[Click here to download everything](\($artifact_url))", "inline": false}\
+                    {"name": $artifact, "value": "[Click here to download everything]($artifact_url)", "inline": false}\
                   ],\
                   "footer": {"text": $footer}\
                 }\
