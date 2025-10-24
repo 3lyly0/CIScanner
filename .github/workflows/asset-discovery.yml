@@ -7,7 +7,7 @@ on:
         description: 'Domain for deep recon'
         required: true
         default: 'raneen.com'
-  schedule:
+  # schedule:
     # - cron: '0 7 * * 0'
 
 jobs:
