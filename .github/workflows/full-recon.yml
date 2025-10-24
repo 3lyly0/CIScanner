@@ -11,7 +11,7 @@ on:
 jobs:
   Recon:
     runs-on: ubuntu-latest
-    container: kalilinux/kali-rolling
+    container: leplusorg/kali
     env:
       DOMAIN: ${{ github.event.inputs.domain }}
     steps:
