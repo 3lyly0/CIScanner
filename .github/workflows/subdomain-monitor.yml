@@ -2,14 +2,14 @@ name: Subdomain Monitor
 
 on:
   schedule:
-    # Runs every 6 hours
-    - cron: '0 */6 * * *'
+    # Runs every 3 hours
+    - cron: '0 */3 * * *'
   workflow_dispatch:
     inputs:
       domain:
         description: 'Target domain to scan'
         required: true
-        default: 'example.com'
+        default: 'raneen.com'
 
 # Set permissions for the workflow
 permissions:
